@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Offline Chess — Realistic & Multiplayer (Upgraded)</title>
+  <style>
+    :root{ --board-size: min(72vmin,740px); --light:#f3d9b0; --dark:#6b4a2a; --accent:#6b8cff }
+    html,body{height:100%}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;display:flex;min-height:100vh;align-items:flex-start;justify-content:center;background:linear-gradient(180deg,#041226 0%, #071a2e 60%);color:#e6eef8;margin:18px;padding:18px}
+    .wrap{display:grid;grid-template-columns:320px var(--board-size) 360px;gap:18px;align-items:start;max-width:1400px}
+    .panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:14px;border-radius:14px;box-shadow:0 10px 30px rgba(4,6,12,.6);border:1px solid rgba(120,140,200,0.04)}
+    h1{font-size:16px;margin:0 0 8px;color:var(--accent)}
+    .small{font-size:13px;color:#9fb2ff}
+    select,input,textarea{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(120,140,200,0.08);background:transparent;color:#dfe9ff}
+    button{display:block;width:100%;margin:8px 0;padding:10px;border-radius:8px;border:none;background:var(--accent);color:white;font-weight:600;cursor:pointer}
+    button.secondary{display:inline-block;width:auto;background:transparent;border:1px solid rgba(120,140,200,0.12);color:#cfe;padding:8px}
+
+    /* board area */
+    .board-wrap{background:linear-gradient(180deg,#0b1a2a 0%, #071026 100%);padding:18px;border-radius:14px;border:6px solid rgba(255,255,255,0.02);box-shadow:0 10px 30px rgba(2,6,23,.6)}
+    .board{width:var(--board-size);height:var(--board-size);display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);border-radius:10px;overflow:hidden;border:6px solid rgba(0,0,0,0.25);position:relative}
+    .cell{display:flex;align-items:center;justify-content:center;font-size:calc(var(--board-size)/9.2);cursor:pointer;user-select:none;transition:transform .12s ease, box-shadow .12s ease}
+    /* wood like squares */
+    .cell.light{background:linear-gradient(180deg, #f7e4c9, #eed8b2);}    
+    .cell.dark{background:linear-gradient(180deg,#8a5f3d,#6b4a2a);}    
+    .cell.highlight{outline:4px solid rgba(107,140,255,.45);outline-offset:-4px}
+    .cell.move{box-shadow:inset 0 0 0 6px rgba(255,255,255,0.03), 0 10px 30px rgba(2,6,23,.45);transform:translateY(-4px)}
+    .cell.hint{outline:4px dashed rgba(99,102,241,.65);outline-offset:-4px}
+    .piece{display:inline-block;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45));transition:transform .14s cubic-bezier(.2,.9,.3,1)}
+    .piece.captured{transform:scale(.8) rotate(-20deg);opacity:.6}
+
+    /* subtle coordinates */
+    .coord{position:absolute;font-size:11px;color:rgba(255,255,255,0.08);}
+    .coord.bottom{bottom:8px;left:8px}
+    .coord.left{top:8px;right:8px}
+
+    .status{margin-top:10px;font-size:14px;color:#bcd2ff}
+    .moves{background:transparent;padding:12px;border-radius:12px;max-height:66vh;overflow:auto}
+    .moves h3{margin:0 0 8px;color:var(--accent);font-size:15px}
+    .move-row{display:grid;grid-template-columns:40px 1fr 1fr;gap:6px;padding:6px 0;border-bottom:1px dashed rgba(255,255,255,0.03)}
+
+    .controls-row{display:flex;gap:8px;align-items:center}
+    footer{grid-column:1/-1;margin-top:12px;color:#7f98d7;font-size:12px}
+    .muted{color:#9fb2ff;font-size:13px}
+    textarea.sign{height:96px;font-family:monospace}
+    @media(max-width:1100px){.wrap{grid-template-columns:1fr;align-items:center}.panel{order:2}.moves{order:3}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <h1>Offline Chess — Realistic & Multiplayer</h1>
+      <div class="small">Features: improved visuals, sound effects (synthesized), Play vs Bot (offline), Hotseat (local 2-player) and Peer-to-peer multiplayer (manual signaling).
+      </div>
+
+      <label>Mode</label>
+      <select id="modeSelect"><option value="bot" selected>Play vs Bot (offline)</option><option value="hotseat">Hotseat (local 2 players)</option><option value="peer">Multiplayer (peer-to-peer)</option></select>
+
+      <label>Play as</label>
+      <select id="sideSelect"><option value="w" selected>White (you)</option><option value="b">Black (you)</option></select>
+
+      <label>Difficulty (search depth)</label>
+      <select id="depth">
+        <option value="1">Easy (depth 1)</option>
+        <option value="2" selected>Normal (depth 2)</option>
+        <option value="3">Hard (depth 3)</option>
+        <option value="4">Very Hard (depth 4)</option>
+        <option value="5">Insane (depth 5)</option>
+        <option value="6">Extreme (depth 6) — may be slow</option>
+      </select>
+
+      <div style="margin-top:8px" class="controls-row">
+        <button id="newBtn">New Game</button>
+        <button id="undoBtn" class="secondary">Undo</button>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button id="hintBtn" class="secondary">Hint</button>
+        <button id="botMoveBtn" class="secondary">Force Bot Move</button>
+      </div>
+
+      <div class="status" id="status">Status: ready</div>
+      <div class="small" style="margin-top:8px">Notes: Auto-promotion to queen. Castling & en-passant not implemented. Peer mode uses manual offer/answer copy-paste (no server required).</div>
+
+      <hr style="margin:10px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)">
+      <div id="peerControls" style="display:none">
+        <div class="muted">Peer-to-peer signaling (copy/paste) — share the offer with your opponent and paste their answer:</div>
+        <label>Create offer</label>
+        <button id="createOfferBtn" class="secondary">Create Offer</button>
+        <label>Offer (send to peer)</label>
+        <textarea id="offerOut" class="sign" readonly></textarea>
+        <label>Paste remote answer</label>
+        <textarea id="answerIn" class="sign" placeholder="Paste remote answer here"></textarea>
+        <button id="acceptAnswerBtn">Accept Answer</button>
+
+        <hr style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)">
+        <div class="muted">Or, if you received an offer from peer, paste it here and create an answer:</div>
+        <label>Paste remote offer</label>
+        <textarea id="offerIn" class="sign" placeholder="Paste remote offer here"></textarea>
+        <button id="createAnswerBtn">Create Answer (paste back to peer)</button>
+        <label>Answer (send back to peer)</label>
+        <textarea id="answerOut" class="sign" readonly></textarea>
+      </div>
+
+    </div>
+
+    <div class="board-wrap panel">
+      <div id="board" class="board" aria-label="Chess board"></div>
+      <div class="coord bottom">a b c d e f g h</div>
+      <div class="coord left">1 2 3 4 5 6 7 8</div>
+      <div class="small" style="margin-top:10px">Click a piece to select → click destination to move. Moves shown at right. For peer mode, both browsers must exchange offer/answer texts.</div>
+    </div>
+
+    <div class="panel moves">
+      <h3>Move List</h3>
+      <div id="movesList"></div>
+      <div style="height:12px"></div>
+      <div class="muted">Sound: On <input id="soundToggle" type="checkbox" checked></div>
+    </div>
+  </div>
+
+<script>
+// ---------- Assets & audio (synthesized) ----------
+const AudioEngine = (()=>{
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  let masterGain = ctx.createGain(); masterGain.gain.value = 0.18; masterGain.connect(ctx.destination);
+  function playTone(frequency=440, time=0.06, type='sine', decay=0.02){
+    const o = ctx.createOscillator(); const g = ctx.createGain(); o.type = type; o.frequency.value = frequency; g.gain.value = 0.0001;
+    o.connect(g); g.connect(masterGain);
+    const now = ctx.currentTime; o.start(now); g.gain.exponentialRampToValueAtTime(0.8, now+0.01); g.gain.exponentialRampToValueAtTime(0.0001, now+time+decay);
+    o.stop(now+time+decay+0.02);
+  }
+  function move(){ playTone(700,0.06,'triangle',0.02); }
+  function capture(){ playTone(420,0.12,'sawtooth',0.03); playTone(620,0.06,'square',0.02); }
+  function check(){ playTone(980,0.16,'sine',0.04); }
+  function gameover(){ playTone(220,0.28,'sine',0.06); playTone(140,0.28,'sine',0.06); }
+  return {move,capture,check,gameover,ctx};
+})();
+let soundEnabled = true;
+
+// ---------- Unicode pieces (kept) ----------
+const unicode = { 'wK':'♔','wQ':'♕','wR':'♖','wB':'♗','wN':'♘','wP':'♙', 'bK':'♚','bQ':'♛','bR':'♜','bB':'♝','bN':'♞','bP':'♟' };
+const files = 'abcdefgh';
+
+// ---------- DOM refs ----------
+let boardEl = document.getElementById('board');
+let statusEl = document.getElementById('status');
+let depthSel = document.getElementById('depth');
+let sideSel = document.getElementById('sideSelect');
+let newBtn = document.getElementById('newBtn');
+let undoBtn = document.getElementById('undoBtn');
+let botMoveBtn = document.getElementById('botMoveBtn');
+let hintBtn = document.getElementById('hintBtn');
+let movesListEl = document.getElementById('movesList');
+let modeSel = document.getElementById('modeSelect');
+let peerControls = document.getElementById('peerControls');
+let createOfferBtn = document.getElementById('createOfferBtn');
+let offerOut = document.getElementById('offerOut');
+let answerIn = document.getElementById('answerIn');
+let acceptAnswerBtn = document.getElementById('acceptAnswerBtn');
+let offerIn = document.getElementById('offerIn');
+let createAnswerBtn = document.getElementById('createAnswerBtn');
+let answerOut = document.getElementById('answerOut');
+let soundToggle = document.getElementById('soundToggle');
+
+// ---------- Game state ----------
+let board = null; // 8x8
+let turn = 'w';
+let selected = null; // {r,c}
+let highlights = [];
+let history = []; // stack of {board,turn,moveNotation}
+let movesPgn = []; // array of {w:..., b:...}
+let userColor = 'w';
+let mode = 'bot';
+
+// ---------- Peer-to-peer state (WebRTC DataChannel with manual signaling) ----------
+let pc = null; let dc = null; let isConnectedPeer = false;
+
+function ensureAudioResume(){ try{ if(AudioEngine && AudioEngine.ctx && AudioEngine.ctx.state==='suspended') AudioEngine.ctx.resume(); }catch(e){} }
+
+function cloneBoard(b){ return b.map(row=>row.slice()); }
+function coordToSquare(r,c){ return files[c] + (8 - r); }
+function notation(fromR,fromC,toR,toC){ return coordToSquare(fromR,fromC) + coordToSquare(toR,toC); }
+
+function initBoard(){
+  board = Array.from({length:8},()=>Array(8).fill(null));
+  const back = ['R','N','B','Q','K','B','N','R'];
+  for(let i=0;i<8;i++){ board[0][i]='b'+back[i]; board[1][i]='bP'; board[6][i]='wP'; board[7][i]='w'+back[i]; }
+  turn='w'; selected=null; highlights=[]; history=[]; movesPgn=[]; userColor = sideSel.value; mode = modeSel.value; render(); renderMoves(); updateStatus();
+  if(mode==='peer') showPeerControls(true); else showPeerControls(false);
+  // if user chose Black vs bot, bot (white) plays first
+  if(mode==='bot' && userColor==='b' && turn==='w') { window.setTimeout(()=>{ aiMove(); }, 220); }
+}
+
+function render(){
+  boardEl.innerHTML='';
+  for(let r=0;r<8;r++){
+    for(let c=0;c<8;c++){
+      const cell = document.createElement('div');
+      cell.className = 'cell ' + (((r+c)%2===0)?'light':'dark');
+      cell.dataset.r=r; cell.dataset.c=c;
+      const piece = board[r][c];
+      if(piece){ const span = document.createElement('span'); span.className='piece'; span.textContent = unicode[piece] || piece; cell.appendChild(span); }
+      cell.addEventListener('click', onCellClick);
+      boardEl.appendChild(cell);
+    }
+  }
+  applyHighlights();
+}
+
+function onCellClick(e){
+  const r=+e.currentTarget.dataset.r, c=+e.currentTarget.dataset.c;
+  const piece = board[r][c];
+  // allowed interactions depend on mode
+  if(mode==='bot'){
+    if(turn !== userColor) return; // ignore clicks when it's not player's turn
+  } else if(mode==='peer'){
+    // in peer mode, only allow moving if it's your turn and connected (or if hotseat for peer?)
+    if(!isConnectedPeer) { alert('Peer connection not established. Use signaling to connect.'); return; }
+    if(turn !== userColor) return; // must be your side
+  } else { /* hotseat */ }
+
+  if(selected){
+    const moves = legalMovesFor(selected.r,selected.c);
+    if(moves.some(m=>m.r===r && m.c===c)){
+      const moveNot = notation(selected.r,selected.c,r,c);
+      pushHistory(moveNot);
+      const captured = !!board[r][c];
+      makeMove(selected.r,selected.c,r,c, moveNot);
+      selected=null; highlights=[]; render(); renderMoves();
+      if(soundEnabled){ ensureAudioResume(); captured? AudioEngine.capture() : AudioEngine.move(); }
+      if(checkGameOver()) return;
+      if(mode==='bot') window.setTimeout(()=>{ if(turn!==userColor) aiMove(); }, 150);
+      if(mode==='peer') sendPeerMove(moveNot);
+      return;
+    }
+  }
+  // select if friendly piece
+  if(piece && piece[0]===turn) { selected={r,c}; highlights = legalMovesFor(r,c); render(); applySelection(); }
+}
+
+function makeMove(r1,c1,r2,c2, moveNot=null){
+  const moving = board[r1][c1];
+  if(!moving) return;
+  if(moving && moving[1]==='P' && (r2===0 || r2===7)){
+    board[r2][c2] = moving[0] + 'Q';
+  } else { board[r2][c2] = board[r1][c1]; }
+  board[r1][c1]=null;
+  if(moveNot){ if(movesPgn.length===0 || (movesPgn[movesPgn.length-1].b)) movesPgn.push({w:null,b:null}); const last = movesPgn[movesPgn.length-1]; if(turn==='w') last.w = moveNot; else last.b = moveNot; }
+  turn = (turn==='w')?'b':'w'; updateStatus(); }
+
+function pushHistory(moveNot=null){ history.push(JSON.stringify({board:cloneBoard(board),turn:turn,move:moveNot})); if(history.length>800) history.shift(); }
+function undo(){ if(history.length===0) return; const last=JSON.parse(history.pop()); board=last.board; turn=last.turn; selected=null; highlights=[]; if(last.move){ if(movesPgn.length){ const lastP = movesPgn[movesPgn.length-1]; if(lastP.b) lastP.b=null; else movesPgn.pop(); } } render(); renderMoves(); updateStatus(); }
+
+function updateStatus(){ let msg = ''; if(isInCheck('w')) msg += 'White is in check. '; if(isInCheck('b')) msg += 'Black is in check. '; statusEl.textContent = (turn==='w'? 'White':'Black') + " to move. " + msg; if(soundEnabled && (isInCheck('w')||isInCheck('b'))) { ensureAudioResume(); AudioEngine.check(); } }
+
+function applySelection(){ if(!selected) return; const index = selected.r*8+selected.c; const cell = boardEl.children[index]; if(cell) cell.classList.add('highlight'); applyHighlights(); }
+function applyHighlights(){ for(const el of boardEl.children) el.classList.remove('move','hint'); for(const h of highlights){ if(!h) continue; const index = h.r*8+h.c; const el = boardEl.children[index]; if(el) el.classList.add('move'); } }
+
+// --- Move generation (same as original, with minor refactor) ---
+function inBounds(r,c){return r>=0 && r<8 && c>=0 && c<8}
+function isEnemyAt(r,c,color){ return inBounds(r,c) && board[r][c] && board[r][c][0]!==color }
+function isEmpty(r,c){ return inBounds(r,c) && board[r][c]===null }
+
+function generateMoves(r,c,piece){ const color = piece[0]; const type = piece[1]; const moves=[];
+  if(type==='P'){ const dir = (color==='w')? -1:1; if(isEmpty(r+dir,c)) moves.push({r:r+dir,c}); const startRow = (color==='w')?6:1; if(r===startRow && isEmpty(r+dir,c) && isEmpty(r+2*dir,c)) moves.push({r:r+2*dir,c}); for(const dc of [-1,1]) if(isEnemyAt(r+dir,c+dc,color)) moves.push({r:r+dir,c:c+dc}); }
+  else if(type==='N'){ const del=[[ -2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]; for(const d of del){ const rr=r+d[0], cc=c+d[1]; if(inBounds(rr,cc) && (!board[rr][cc] || board[rr][cc][0]!==color)) moves.push({r:rr,c:cc}); } }
+  else if(type==='B' || type==='R' || type==='Q'){ const dirs = (type==='B')? [[1,1],[1,-1],[-1,1],[-1,-1]] : (type==='R')? [[1,0],[-1,0],[0,1],[0,-1]] : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]; for(const d of dirs){ let rr=r+d[0], cc=c+d[1]; while(inBounds(rr,cc)){ if(board[rr][cc]){ if(board[rr][cc][0]!==color) moves.push({r:rr,c:cc}); break } moves.push({r:rr,c:cc}); rr+=d[0]; cc+=d[1]; } } }
+  else if(type==='K'){ for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){ if(dr===0 && dc===0) continue; const rr=r+dr, cc=c+dc; if(inBounds(rr,cc) && (!board[rr][cc] || board[rr][cc][0]!==color)) moves.push({r:rr,c:cc}); } }
+  return moves; }
+
+function legalMovesFor(r,c){ const p = board[r][c]; if(!p) return []; const color=p[0]; let moves = generateMoves(r,c,p);
+  const legal = [];
+  for(const m of moves){ const snapshot = cloneBoard(board); snapshot[m.r][m.c] = snapshot[r][c]; snapshot[r][c] = null; if(p[1]==='P' && (m.r===0 || m.r===7)) snapshot[m.r][m.c] = color+'Q'; if(!kingInCheckAfter(snapshot,color)) legal.push(m); }
+  return legal; }
+
+function kingInCheckAfter(snap,color){ let kr=-1,kc=-1; for(let i=0;i<8;i++) for(let j=0;j<8;j++) if(snap[i][j]===color+'K'){ kr=i;kc=j } if(kr===-1) return true; return isSquareAttacked(snap,kr,kc, color==='w'?'b':'w'); }
+
+function isInCheck(color){ const k = findKing(color); if(k[0]===-1) return false; return isSquareAttacked(board, k[0], k[1], color==='w'?'b':'w'); }
+function findKing(color){ for(let i=0;i<8;i++) for(let j=0;j<8;j++) if(board[i][j]===color+'K') return [i,j]; return [-1,-1]; }
+
+function isSquareAttacked(snap, r, c, byColor){ if(!inBounds(r,c)) return false; const dir = (byColor==='w')? -1 : 1; const pawnAtt = [[r+dir,c-1],[r+dir,c+1]]; for(const [pr,pc] of pawnAtt) if(inBounds(pr,pc) && snap[pr][pc]===byColor+'P') return true; const knights = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]; for(const d of knights){ const rr=r+d[0], cc=c+d[1]; if(inBounds(rr,cc) && snap[rr][cc]===byColor+'N') return true; }
+  const lines = [ [1,0],[-1,0],[0,1],[0,-1] ];
+  for(const d of lines){ let rr=r+d[0], cc=c+d[1]; while(inBounds(rr,cc)){ const p=snap[rr][cc]; if(p){ if(p[0]===byColor && (p[1]==='R' || p[1]==='Q')) return true; else break } rr+=d[0];cc+=d[1]; } }
+  const diags = [[1,1],[1,-1],[-1,1],[-1,-1]];
+  for(const d of diags){ let rr=r+d[0], cc=c+d[1]; while(inBounds(rr,cc)){ const p=snap[rr][cc]; if(p){ if(p[0]===byColor && (p[1]==='B' || p[1]==='Q')) return true; else break } rr+=d[0];cc+=d[1]; } }
+  for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){ if(dr===0 && dc===0) continue; const rr=r+dr, cc=c+dc; if(inBounds(rr,cc) && snap[rr][cc]===byColor+'K') return true; }
+  return false; }
+
+// --- AI: minimax with material evaluation (same as before) ---
+const pieceValue = {'P':100,'N':320,'B':330,'R':500,'Q':900,'K':20000};
+function evaluatePosition(b){ let score=0; for(let r=0;r<8;r++) for(let c=0;c<8;c++){ const p=b[r][c]; if(p){ const v = pieceValue[p[1]] || 0; score += (p[0]==='w')? v : -v; } } return score; }
+
+function allLegalMovesForColor(color, currentBoard=board){ const moves=[]; for(let r=0;r<8;r++) for(let c=0;c<8;c++) if(currentBoard[r][c] && currentBoard[r][c][0]===color){ const mvs = legalMovesForSnapshot(currentBoard, r, c); for(const m of mvs) moves.push({from:{r,c},to:{r:m.r,c:m.c}}); } return moves; }
+
+function aiMove(){ const d = parseInt(depthSel.value,10); const aiColor = (userColor==='w') ? 'b' : 'w'; const best = minimaxRoot(d, aiColor); if(best) { pushHistory(notation(best.from.r,best.from.c,best.to.r,best.to.c)); const captured = !!board[best.to.r][best.to.c]; makeMove(best.from.r,best.from.c,best.to.r,best.to.c, notation(best.from.r,best.from.c,best.to.r,best.to.c)); render(); renderMoves(); if(soundEnabled){ ensureAudioResume(); captured? AudioEngine.capture() : AudioEngine.move(); } if(checkGameOver()) return; } }
+
+function minimaxRoot(depth, aiColor){ const moves = allLegalMovesForColor(aiColor); if(moves.length===0) return null; let bestScore = -Infinity, bestMoves=[]; for(const m of moves){ const snap = cloneBoard(board); snap[m.to.r][m.to.c] = snap[m.from.r][m.from.c]; snap[m.from.r][m.from.c]=null; const score = minimax(snap, depth-1, -Infinity, +Infinity, true); if(score>bestScore){ bestScore=score; bestMoves=[m]; } else if(score===bestScore) bestMoves.push(m); } return bestMoves[Math.floor(Math.random()*bestMoves.length)]; }
+
+function minimax(snap, depth, alpha, beta, isMaximizing){ if(depth===0) return evaluatePosition(snap); const color = isMaximizing? 'w':'b'; const moves = []; for(let r=0;r<8;r++) for(let c=0;c<8;c++) if(snap[r][c] && snap[r][c][0]===color){ const p = snap[r][c]; const gen = generateMovesSnapshot(snap, r, c, p); for(const m of gen) moves.push({from:{r,c},to:{r:m.r,c:m.c}}); } if(moves.length===0) return evaluatePosition(snap); if(isMaximizing){ let maxEval = -Infinity; for(const m of moves){ const s2 = cloneBoard(snap); s2[m.to.r][m.to.c] = s2[m.from.r][m.from.c]; s2[m.from.r][m.from.c]=null; const val = minimax(s2, depth-1, alpha, beta, false); maxEval = Math.max(maxEval, val); alpha = Math.max(alpha, val); if(beta<=alpha) break; } return maxEval; } else { let minEval = +Infinity; for(const m of moves){ const s2 = cloneBoard(snap); s2[m.to.r][m.to.c] = s2[m.from.r][m.from.c]; s2[m.from.r][m.from.c]=null; const val = minimax(s2, depth-1, alpha, beta, true); minEval = Math.min(minEval, val); beta = Math.min(beta, val); if(beta<=alpha) break; } return minEval; } }
+
+function generateMovesSnapshot(snap,r,c,piece){ const color = piece[0]; const type = piece[1]; const moves=[]; function inB(rr,cc){return rr>=0&&rr<8&&cc>=0&&cc<8} function empty(rr,cc){return inB(rr,cc) && !snap[rr][cc]} function enemy(rr,cc){return inB(rr,cc) && snap[rr][cc] && snap[rr][cc][0]!==color}
+  if(type==='P'){ const dir=(color==='w')? -1:1; if(empty(r+dir,c)) moves.push({r:r+dir,c}); const start=(color==='w')?6:1; if(r===start && empty(r+dir,c) && empty(r+2*dir,c)) moves.push({r:r+2*dir,c}); for(const dc of [-1,1]) if(enemy(r+dir,c+dc)) moves.push({r:r+dir,c:c+dc}); }
+  else if(type==='N'){ const del=[[ -2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]; for(const d of del){ const rr=r+d[0], cc=c+d[1]; if(inB(rr,cc) && (!snap[rr][cc] || snap[rr][cc][0]!==color)) moves.push({r:rr,c:cc}); } }
+  else if(type==='B'||type==='R'||type==='Q'){ const dirs = (type==='B')? [[1,1],[1,-1],[-1,1],[-1,-1]] : (type==='R')? [[1,0],[-1,0],[0,1],[0,-1]] : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]; for(const d of dirs){ let rr=r+d[0], cc=c+d[1]; while(inB(rr,cc)){ if(snap[rr][cc]){ if(snap[rr][cc][0]!==color) moves.push({r:rr,c:cc}); break } moves.push({r:rr,c:cc}); rr+=d[0]; cc+=d[1]; } } }
+  else if(type==='K'){ for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){ if(dr===0&&dc===0) continue; const rr=r+dr, cc=c+dc; if(inB(rr,cc) && (!snap[rr][cc] || snap[rr][cc][0]!==color)) moves.push({r:rr,c:cc}); } }
+  const legal=[]; for(const m of moves){ const s2 = cloneBoard(snap); s2[m.r][m.c] = s2[r][c]; s2[r][c]=null; if(!kingInCheckAfter(s2,color)) legal.push(m); } return legal; }
+
+function legalMovesForSnapshot(currentBoard, r, c){ if(!currentBoard || !inBounds(r,c)) return []; const p = currentBoard[r][c]; if(!p) return []; const color = p[0]; const moves = generateMovesSnapshot(currentBoard, r, c, p); const legal = []; for(const m of moves){ const snap = cloneBoard(currentBoard); snap[m.r][m.c] = snap[r][c]; snap[r][c] = null; if(p[1]==='P' && (m.r===0 || m.r===7)) snap[m.r][m.c] = color+'Q'; if(!kingInCheckAfter(snap,color)) legal.push(m); } return legal; }
+
+// --- Hint generation ---
+let lastHint = null;
+function showHint(){ const hintDepth = Math.min(3, Math.max(1, parseInt(depthSel.value,10)-1)); const color = turn; const moves = allLegalMovesForColor(color); if(moves.length===0){ statusEl.textContent = 'No legal moves for hint.'; return; } let bestScore = (color==='b'?-Infinity:Infinity); let bestMoves = []; for(const m of moves){ const snap = cloneBoard(board); snap[m.to.r][m.to.c] = snap[m.from.r][m.from.c]; snap[m.from.r][m.from.c]=null; const score = minimax(snap, hintDepth-1, -Infinity, +Infinity, color==='w'); if(color==='b'){ if(score>bestScore){ bestScore=score; bestMoves=[m]; } else if(score===bestScore) bestMoves.push(m); } else { if(score<bestScore){ bestScore=score; bestMoves=[m]; } else if(score===bestScore) bestMoves.push(m); } }
+  const chosen = bestMoves[Math.floor(Math.random()*bestMoves.length)]; if(!chosen) return; clearHints(); const fromIdx = chosen.from.r*8+chosen.from.c; const toIdx = chosen.to.r*8+chosen.to.c; const fromEl = boardEl.children[fromIdx]; const toEl = boardEl.children[toIdx]; if(toEl) toEl.classList.add('hint'); if(fromEl) fromEl.classList.add('hint'); lastHint = {from:chosen.from,to:chosen.to}; statusEl.textContent = `Hint: try ${notation(chosen.from.r,chosen.from.c,chosen.to.r,chosen.to.c)}`; }
+function clearHints(){ if(!boardEl) return; for(const el of boardEl.children) el.classList.remove('hint'); lastHint=null; }
+
+// --- Game over detection ---
+function checkGameOver(){ const moves = allLegalMovesForColor(turn); if(moves.length===0){ if(isInCheck(turn)) { alert((turn==='w'?'White':'Black') + ' is checkmated. ' + (turn==='w'?'Black':'White') + ' wins!'); if(soundEnabled){ ensureAudioResume(); AudioEngine.gameover(); } } else { alert('Stalemate — draw.'); } return true; } return false; }
+
+// --- Moves list rendering ---
+function renderMoves(){ movesListEl.innerHTML=''; for(let i=0;i<movesPgn.length;i++){ const m = movesPgn[i]; const row = document.createElement('div'); row.className='move-row'; const num = document.createElement('div'); num.className='move-num'; num.textContent = (i+1)+'.'; const mw = document.createElement('div'); mw.className='move-w'; mw.textContent = m.w || ''; const mb = document.createElement('div'); mb.className='move-b'; mb.textContent = m.b || ''; row.appendChild(num); row.appendChild(mw); row.appendChild(mb); movesListEl.appendChild(row); } movesListEl.scrollTop = movesListEl.scrollHeight; }
+
+// ---------- Wire controls ----------
+newBtn.addEventListener('click', ()=>{ initBoard(); clearHints(); }); undoBtn.addEventListener('click', ()=>{ undo(); clearHints(); }); botMoveBtn.addEventListener('click', ()=>{ if(mode!=='bot') { alert('Force bot move only available in Play vs Bot mode.'); return; } if(turn!==userColor) aiMove(); else alert('It is your turn. Bot plays opposite side.'); }); hintBtn.addEventListener('click', ()=>{ showHint(); });
+modeSel.addEventListener('change', ()=>{ mode = modeSel.value; showPeerControls(mode==='peer'); initBoard(); });
+soundToggle.addEventListener('change',(e)=>{ soundEnabled = e.target.checked; });
+
+// ---------- Peer-to-peer (manual signaling) ----------
+createOfferBtn.addEventListener('click', async ()=>{
+  await createPeerConnection(true);
+});
+acceptAnswerBtn.addEventListener('click', async ()=>{
+  const answer = answerIn.value.trim(); if(!answer) return alert('Paste answer text from peer.'); try{ const obj = JSON.parse(answer); await pc.setRemoteDescription(obj); isConnectedPeer=true; statusEl.textContent='Peer connected — your turn: ' + (turn==='w'?'White':'Black'); alert('Connected to peer!'); }catch(e){ alert('Could not accept answer: '+e); }
+});
+createAnswerBtn.addEventListener('click', async ()=>{
+  const offerText = offerIn.value.trim(); if(!offerText) return alert('Paste offer text received from peer'); try{ const offer = JSON.parse(offerText); await createPeerConnection(false, offer); }catch(e){ alert('Invalid offer pasted: '+e); }
+});
+
+async function createPeerConnection(initiator=true, remoteOffer=null){
+  pc = new RTCPeerConnection();
+  dc = pc.createDataChannel ? pc.createDataChannel('chess') : null;
+  if(dc){ dc.onopen = ()=>{ isConnectedPeer = true; statusEl.textContent='Data channel open — peer ready'; alert('Data channel open'); };
+    dc.onmessage = (ev)=>{ handlePeerMessage(ev.data); };
+  }
+  pc.ondatachannel = (ev)=>{ dc = ev.channel; dc.onmessage = (e)=>{ handlePeerMessage(e.data); }; dc.onopen = ()=>{ isConnectedPeer=true; statusEl.textContent='Data channel open — peer ready'; alert('Data channel open'); }; };
+  pc.onicecandidate = (ev)=>{ if(ev.candidate) return; // wait for full gather (null candidate)
+    if(initiator){ offerOut.value = JSON.stringify(pc.localDescription); } else { answerOut.value = JSON.stringify(pc.localDescription); }
+  };
+  if(initiator){ const offer = await pc.createOffer(); await pc.setLocalDescription(offer); // wait for ICE to finish — we'll rely on onicecandidate above
+  } else {
+    await pc.setRemoteDescription(remoteOffer);
+    const answer = await pc.createAnswer(); await pc.setLocalDescription(answer);
+    // answerOut will be filled once gathering done (onicecandidate)
+  }
+}
+
+function handlePeerMessage(text){ try{ const obj = JSON.parse(text); if(obj.type==='move'){ // opponent moved
+    const mv = obj.move; applyRemoteMove(mv); } else if(obj.type==='chat'){ console.log('peer chat', obj.t); } }catch(e){ console.log('peer msg', text); } }
+
+function sendPeerMove(moveNotation){ if(!dc || dc.readyState!=='open'){ console.warn('Data channel not ready'); return; } dc.send(JSON.stringify({type:'move', move:moveNotation})); }
+
+function applyRemoteMove(moveNotation){ // moveNotation like e2e4. parse and apply
+  const from = moveNotation.slice(0,2); const to = moveNotation.slice(2,4);
+  const fC = files.indexOf(from[0]); const fR = 8 - parseInt(from[1],10); const tC = files.indexOf(to[0]); const tR = 8 - parseInt(to[1],10);
+  pushHistory(moveNotation); const captured = !!board[tR][tC]; makeMove(fR,fC,tR,tC,moveNotation); render(); renderMoves(); if(soundEnabled){ ensureAudioResume(); captured? AudioEngine.capture() : AudioEngine.move(); } if(checkGameOver()) return; }
+
+function showPeerControls(show){ peerControls.style.display = show? 'block' : 'none'; }
+
+// ---------- init and start ----------
+initBoard();
+
+</script>
+</body>
+</html>
