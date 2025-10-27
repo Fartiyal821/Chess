@@ -5,29 +5,110 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Offline Chess — Realistic & Multiplayer (Upgraded)</title>
   <style>
-    /* FIXED board size (constant) */
-    :root{ --board-size: 640px; --light:#f3d9b0; --dark:#6b4a2a; --accent:#6b8cff }
+    /* Responsive board size and theme variables */
+    :root{
+      /* board scales with viewport (vmin keeps it square-ish), capped at 640px */
+      --board-size: min(72vmin, 640px);
+      --panel-min: 200px;
+      --light:#f3d9b0;
+      --dark:#6b4a2a;
+      --accent:#6b8cff;
+    }
+
     html,body{height:100%}
-    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;display:flex;min-height:100vh;align-items:flex-start;justify-content:center;background:linear-gradient(180deg,#041226 0%, #071a2e 60%);color:#e6eef8;margin:18px;padding:18px}
-    .wrap{display:grid;grid-template-columns:320px var(--board-size) 360px;gap:18px;align-items:start;max-width:1400px}
-    .panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:14px;border-radius:14px;box-shadow:0 10px 30px rgba(4,6,12,.6);border:1px solid rgba(120,140,200,0.04)}
+    body{
+      font-family:Inter,system-ui,Segoe UI,Roboto,Arial;
+      display:flex;
+      min-height:100vh;
+      align-items:flex-start;
+      justify-content:center;
+      background:linear-gradient(180deg,#041226 0%, #071a2e 60%);
+      color:#e6eef8;
+      margin:12px;
+      padding:12px;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+
+    /* wrap: fluid three-column layout on wide screens, stacks on small screens */
+    .wrap{
+      display:grid;
+      grid-template-columns: clamp(220px, 22%, 320px) var(--board-size) clamp(200px, 22%, 360px);
+      gap:14px;
+      align-items:start;
+      width:100%;
+      max-width:1400px;
+      box-sizing:border-box;
+      padding:6px;
+    }
+
+    .panel{
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      padding:12px;
+      border-radius:12px;
+      box-shadow:0 10px 30px rgba(4,6,12,.6);
+      border:1px solid rgba(120,140,200,0.04);
+      box-sizing:border-box;
+    }
+
     h1{font-size:16px;margin:0 0 8px;color:var(--accent)}
     .small{font-size:13px;color:#9fb2ff}
-    select,input,textarea{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(120,140,200,0.08);background:transparent;color:#dfe9ff}
+    select,input,textarea{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(120,140,200,0.08);background:transparent;color:#dfe9ff;box-sizing:border-box}
     button{display:block;width:100%;margin:8px 0;padding:10px;border-radius:8px;border:none;background:var(--accent);color:white;font-weight:600;cursor:pointer}
     button.secondary{display:inline-block;width:auto;background:transparent;border:1px solid rgba(120,140,200,0.12);color:#cfe;padding:8px}
 
     /* board area */
-    .board-wrap{background:linear-gradient(180deg,#0b1a2a 0%, #071026 100%);padding:18px;border-radius:14px;border:6px solid rgba(255,255,255,0.02);box-shadow:0 10px 30px rgba(2,6,23,.6)}
-    .board{width:var(--board-size);height:var(--board-size);display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);border-radius:10px;overflow:hidden;border:6px solid rgba(0,0,0,0.25);position:relative}
-    .cell{display:flex;align-items:center;justify-content:center;font-size:calc(var(--board-size)/9.2);cursor:pointer;user-select:none;transition:transform .12s ease, box-shadow .12s ease}
+    .board-wrap{
+      background:linear-gradient(180deg,#0b1a2a 0%, #071026 100%);
+      padding:14px;
+      border-radius:12px;
+      border:6px solid rgba(255,255,255,0.02);
+      box-shadow:0 10px 30px rgba(2,6,23,.6);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      box-sizing:border-box;
+    }
+
+    /* keep board square using responsive var */
+    .board{
+      width:var(--board-size);
+      height:var(--board-size);
+      display:grid;
+      grid-template-columns:repeat(8,1fr);
+      grid-template-rows:repeat(8,1fr);
+      border-radius:10px;
+      overflow:hidden;
+      border:6px solid rgba(0,0,0,0.25);
+      position:relative;
+      touch-action: none; /* prevent unwanted touch gestures on the board */
+      -webkit-user-select:none;
+      -ms-user-select:none;
+      user-select:none;
+    }
+
+    .cell{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      /* piece font size scales with board size and has a small clamp for extremes */
+      font-size: calc(var(--board-size) / 9.2);
+      cursor:pointer;
+      user-select:none;
+      transition:transform .12s ease, box-shadow .12s ease;
+      -webkit-tap-highlight-color: rgba(0,0,0,0);
+      touch-action: manipulation; /* make taps snappier on mobile */
+      padding:2px;
+    }
+
     /* wood like squares */
-    .cell.light{background:linear-gradient(180deg, #f7e4c9, #eed8b2);}    
-    .cell.dark{background:linear-gradient(180deg,#8a5f3d,#6b4a2a);}    
+    .cell.light{background:linear-gradient(180deg, #f7e4c9, #eed8b2);}
+    .cell.dark{background:linear-gradient(180deg,#8a5f3d,#6b4a2a);}
     .cell.highlight{outline:4px solid rgba(107,140,255,.45);outline-offset:-4px}
-    .cell.move{box-shadow:inset 0 0 0 6px rgba(255,255,255,0.03), 0 10px 30px rgba(2,6,23,.45);transform:translateY(-4px)}
+    .cell.move{box-shadow:inset 0 0 0 6px rgba(255,255,255,0.03), 0 8px 20px rgba(2,6,23,.35);transform:translateY(-3px)}
     .cell.hint{outline:4px dashed rgba(99,102,241,.65);outline-offset:-4px}
-    .piece{display:inline-block;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45));transition:transform .14s cubic-bezier(.2,.9,.3,1)}
+
+    .piece{display:inline-block;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45));transition:transform .14s cubic-bezier(.2,.9,.3,1);line-height:1}
     .piece.captured{transform:scale(.8) rotate(-20deg);opacity:.6}
 
     /* subtle coordinates */
@@ -40,19 +121,56 @@
     .moves h3{margin:0 0 8px;color:var(--accent);font-size:15px}
     .move-row{display:grid;grid-template-columns:40px 1fr 1fr;gap:6px;padding:6px 0;border-bottom:1px dashed rgba(255,255,255,0.03)}
 
-    .controls-row{display:flex;gap:8px;align-items:center}
+    .controls-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     footer{grid-column:1/-1;margin-top:12px;color:#7f98d7;font-size:12px}
     .muted{color:#9fb2ff;font-size:13px}
     textarea.sign{height:96px;font-family:monospace}
     .promo-modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#071026;border-radius:12px;padding:18px;border:1px solid rgba(120,140,200,0.08);z-index:9999}
-    @media(max-width:1100px){.wrap{grid-template-columns:1fr;align-items:center}.panel{order:2}.moves{order:3}}
+
+    /* responsive: stack into single column on narrower viewports */
+    @media(max-width:1100px){
+      .wrap{grid-template-columns:1fr;align-items:center}
+      .panel{order:2;width:100%}
+      .board-wrap{order:1;width:100%;display:flex;justify-content:center}
+      .moves{order:3}
+      .board{ /* make board not fill entire width on very narrow screens */
+        max-width: min(calc(100vw - 48px), var(--board-size));
+        width: min(calc(100vw - 48px), var(--board-size));
+        height: min(calc(100vw - 48px), var(--board-size));
+      }
+    }
+
+    /* small phones: slightly reduce paddings and font sizes for UI elements */
+    @media(max-width:480px){
+      :root{ --board-size: min(88vmin, 520px); }
+      body{margin:8px;padding:8px}
+      .panel{padding:10px;border-radius:10px}
+      .small{font-size:12px}
+      h1{font-size:15px}
+      .move-row{grid-template-columns:30px 1fr 1fr}
+      button{padding:8px}
+      select,input,textarea{padding:6px}
+      .coord{font-size:10px}
+      .status{font-size:13px}
+    }
+
+    /* ensure the move list scroll area uses available height on small screens */
+    @media(max-height:700px){
+      .moves{max-height:40vh}
+    }
+
+    /* make panel content readable on very tall/narrow screens */
+    @media (orientation:portrait) and (max-width:420px){
+      :root{ --board-size: min(76vmin, 460px); }
+    }
+
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="panel">
       <h1>Offline Chess — Realistic & Multiplayer</h1>
-      <div class="small">Features: fixed board size, castling, en-passant, promotion choice, illegal-move notifications, stronger AI, peer-to-peer signaling.</div>
+      <div class="small">Features: fixed board behaviour, castling, en-passant, promotion choice, illegal-move notifications, stronger AI, peer-to-peer signaling.</div>
 
       <label>Mode</label>
       <select id="modeSelect"><option value="bot" selected>Play vs Bot (offline)</option><option value="hotseat">Hotseat (local 2 players)</option><option value="peer">Multiplayer (peer-to-peer)</option></select>
@@ -75,7 +193,7 @@
         <button id="undoBtn" class="secondary">Undo</button>
       </div>
 
-      <div style="display:flex;gap:8px;margin-top:6px">
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
         <button id="hintBtn" class="secondary">Hint</button>
         <button id="botMoveBtn" class="secondary">Force Bot Move</button>
       </div>
@@ -109,7 +227,7 @@
       <div id="board" class="board" aria-label="Chess board"></div>
       <div class="coord bottom">a b c d e f g h</div>
       <div class="coord left">1 2 3 4 5 6 7 8</div>
-      <div class="small" style="margin-top:10px">Click a piece to select → click destination to move. Moves shown at right. For peer mode, both browsers must exchange offer/answer texts.</div>
+      <div class="small" style="margin-top:10px">Click/tap a piece to select → tap destination to move. Moves shown at right. For peer mode, both browsers must exchange offer/answer texts.</div>
     </div>
 
     <div class="panel moves">
@@ -132,6 +250,8 @@
   </div>
 
 <script>
+// (JS left intact from original — only small additions might be required by new CSS; pasted here for completeness)
+
 // -------------------------- Assets & small audio --------------------------
 const AudioEngine = (()=>{
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
