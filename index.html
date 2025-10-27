@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Offline Chess — Realistic & Multiplayer (Upgraded)</title>
   <style>
-    :root{ --board-size: min(72vmin,740px); --light:#f3d9b0; --dark:#6b4a2a; --accent:#6b8cff }
+    /* FIXED board size (constant) */
+    :root{ --board-size: 640px; --light:#f3d9b0; --dark:#6b4a2a; --accent:#6b8cff }
     html,body{height:100%}
     body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;display:flex;min-height:100vh;align-items:flex-start;justify-content:center;background:linear-gradient(180deg,#041226 0%, #071a2e 60%);color:#e6eef8;margin:18px;padding:18px}
     .wrap{display:grid;grid-template-columns:320px var(--board-size) 360px;gap:18px;align-items:start;max-width:1400px}
@@ -43,6 +44,7 @@
     footer{grid-column:1/-1;margin-top:12px;color:#7f98d7;font-size:12px}
     .muted{color:#9fb2ff;font-size:13px}
     textarea.sign{height:96px;font-family:monospace}
+    .promo-modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#071026;border-radius:12px;padding:18px;border:1px solid rgba(120,140,200,0.08);z-index:9999}
     @media(max-width:1100px){.wrap{grid-template-columns:1fr;align-items:center}.panel{order:2}.moves{order:3}}
   </style>
 </head>
@@ -50,8 +52,7 @@
   <div class="wrap">
     <div class="panel">
       <h1>Offline Chess — Realistic & Multiplayer</h1>
-      <div class="small">Features: improved visuals, sound effects (synthesized), Play vs Bot (offline), Hotseat (local 2-player) and Peer-to-peer multiplayer (manual signaling).
-      </div>
+      <div class="small">Features: fixed board size, castling, en-passant, promotion choice, illegal-move notifications, stronger AI, peer-to-peer signaling.</div>
 
       <label>Mode</label>
       <select id="modeSelect"><option value="bot" selected>Play vs Bot (offline)</option><option value="hotseat">Hotseat (local 2 players)</option><option value="peer">Multiplayer (peer-to-peer)</option></select>
@@ -62,8 +63,8 @@
       <label>Difficulty (search depth)</label>
       <select id="depth">
         <option value="1">Easy (depth 1)</option>
-        <option value="2" selected>Normal (depth 2)</option>
-        <option value="3">Hard (depth 3)</option>
+        <option value="2">Normal (depth 2)</option>
+        <option value="3" selected>Hard (depth 3)</option>
         <option value="4">Very Hard (depth 4)</option>
         <option value="5">Insane (depth 5)</option>
         <option value="6">Extreme (depth 6) — may be slow</option>
@@ -80,7 +81,7 @@
       </div>
 
       <div class="status" id="status">Status: ready</div>
-      <div class="small" style="margin-top:8px">Notes: Auto-promotion to queen. Castling & en-passant not implemented. Peer mode uses manual offer/answer copy-paste (no server required).</div>
+      <div class="small" style="margin-top:8px">Notes: Promotion prompts you to choose piece. Castling & en-passant implemented. Peer uses manual offer/answer copy-paste.</div>
 
       <hr style="margin:10px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)">
       <div id="peerControls" style="display:none">
@@ -119,18 +120,29 @@
     </div>
   </div>
 
+  <!-- Promotion modal (hidden until needed) -->
+  <div id="promoModal" style="display:none" class="promo-modal">
+    <div style="font-weight:700;margin-bottom:8px;color:var(--accent)">Choose promotion</div>
+    <div style="display:flex;gap:8px">
+      <button data-piece="Q" class="promoBtn">Queen ♕</button>
+      <button data-piece="R" class="promoBtn">Rook ♖</button>
+      <button data-piece="B" class="promoBtn">Bishop ♗</button>
+      <button data-piece="N" class="promoBtn">Knight ♘</button>
+    </div>
+  </div>
+
 <script>
-// ---------- Assets & audio (synthesized) ----------
+// -------------------------- Assets & small audio --------------------------
 const AudioEngine = (()=>{
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  let masterGain = ctx.createGain(); masterGain.gain.value = 0.18; masterGain.connect(ctx.destination);
+  let masterGain = ctx.createGain(); masterGain.gain.value = 0.16; masterGain.connect(ctx.destination);
   function playTone(frequency=440, time=0.06, type='sine', decay=0.02){
     const o = ctx.createOscillator(); const g = ctx.createGain(); o.type = type; o.frequency.value = frequency; g.gain.value = 0.0001;
     o.connect(g); g.connect(masterGain);
     const now = ctx.currentTime; o.start(now); g.gain.exponentialRampToValueAtTime(0.8, now+0.01); g.gain.exponentialRampToValueAtTime(0.0001, now+time+decay);
     o.stop(now+time+decay+0.02);
   }
-  function move(){ playTone(700,0.06,'triangle',0.02); }
+  function move(){ playTone(720,0.06,'triangle',0.02); }
   function capture(){ playTone(420,0.12,'sawtooth',0.03); playTone(620,0.06,'square',0.02); }
   function check(){ playTone(980,0.16,'sine',0.04); }
   function gameover(){ playTone(220,0.28,'sine',0.06); playTone(140,0.28,'sine',0.06); }
@@ -138,60 +150,73 @@ const AudioEngine = (()=>{
 })();
 let soundEnabled = true;
 
-// ---------- Unicode pieces (kept) ----------
+// -------------------------- Unicode pieces --------------------------
 const unicode = { 'wK':'♔','wQ':'♕','wR':'♖','wB':'♗','wN':'♘','wP':'♙', 'bK':'♚','bQ':'♛','bR':'♜','bB':'♝','bN':'♞','bP':'♟' };
 const files = 'abcdefgh';
 
-// ---------- DOM refs ----------
-let boardEl = document.getElementById('board');
-let statusEl = document.getElementById('status');
-let depthSel = document.getElementById('depth');
-let sideSel = document.getElementById('sideSelect');
-let newBtn = document.getElementById('newBtn');
-let undoBtn = document.getElementById('undoBtn');
-let botMoveBtn = document.getElementById('botMoveBtn');
-let hintBtn = document.getElementById('hintBtn');
-let movesListEl = document.getElementById('movesList');
-let modeSel = document.getElementById('modeSelect');
-let peerControls = document.getElementById('peerControls');
-let createOfferBtn = document.getElementById('createOfferBtn');
-let offerOut = document.getElementById('offerOut');
-let answerIn = document.getElementById('answerIn');
-let acceptAnswerBtn = document.getElementById('acceptAnswerBtn');
-let offerIn = document.getElementById('offerIn');
-let createAnswerBtn = document.getElementById('createAnswerBtn');
-let answerOut = document.getElementById('answerOut');
-let soundToggle = document.getElementById('soundToggle');
+// -------------------------- Elements --------------------------
+const boardEl = document.getElementById('board');
+const statusEl = document.getElementById('status');
+const depthSel = document.getElementById('depth');
+const sideSel = document.getElementById('sideSelect');
+const newBtn = document.getElementById('newBtn');
+const undoBtn = document.getElementById('undoBtn');
+const botMoveBtn = document.getElementById('botMoveBtn');
+const hintBtn = document.getElementById('hintBtn');
+const movesListEl = document.getElementById('movesList');
+const modeSel = document.getElementById('modeSelect');
+const peerControls = document.getElementById('peerControls');
+const createOfferBtn = document.getElementById('createOfferBtn');
+const offerOut = document.getElementById('offerOut');
+const answerIn = document.getElementById('answerIn');
+const acceptAnswerBtn = document.getElementById('acceptAnswerBtn');
+const offerIn = document.getElementById('offerIn');
+const createAnswerBtn = document.getElementById('createAnswerBtn');
+const answerOut = document.getElementById('answerOut');
+const soundToggle = document.getElementById('soundToggle');
+const promoModal = document.getElementById('promoModal');
 
-// ---------- Game state ----------
+// -------------------------- Game state --------------------------
 let board = null; // 8x8
 let turn = 'w';
 let selected = null; // {r,c}
 let highlights = [];
-let history = []; // stack of {board,turn,moveNotation}
+let history = []; // stack of {board,turn,moveNotation, castlingFlags, enPassant}
 let movesPgn = []; // array of {w:..., b:...}
 let userColor = 'w';
 let mode = 'bot';
 
-// ---------- Peer-to-peer state (WebRTC DataChannel with manual signaling) ----------
+// advanced state flags for castling and en-passant
+let whiteKingMoved = false, blackKingMoved = false;
+let whiteRookA_moved = false, whiteRookH_moved = false;
+let blackRookA_moved = false, blackRookH_moved = false;
+let enPassantTarget = null; // {r,c} square that can be captured en-passant (target square behind pawn)
+let promotionCallback = null; // function to call for promotion choice
+
+// ---------- Peer-to-peer state (WebRTC) ----------
 let pc = null; let dc = null; let isConnectedPeer = false;
 
+// -------------------------- Utilities --------------------------
 function ensureAudioResume(){ try{ if(AudioEngine && AudioEngine.ctx && AudioEngine.ctx.state==='suspended') AudioEngine.ctx.resume(); }catch(e){} }
-
 function cloneBoard(b){ return b.map(row=>row.slice()); }
 function coordToSquare(r,c){ return files[c] + (8 - r); }
 function notation(fromR,fromC,toR,toC){ return coordToSquare(fromR,fromC) + coordToSquare(toR,toC); }
 
+// -------------------------- Init board --------------------------
 function initBoard(){
   board = Array.from({length:8},()=>Array(8).fill(null));
   const back = ['R','N','B','Q','K','B','N','R'];
   for(let i=0;i<8;i++){ board[0][i]='b'+back[i]; board[1][i]='bP'; board[6][i]='wP'; board[7][i]='w'+back[i]; }
-  turn='w'; selected=null; highlights=[]; history=[]; movesPgn=[]; userColor = sideSel.value; mode = modeSel.value; render(); renderMoves(); updateStatus();
+  turn='w'; selected=null; highlights=[]; history=[]; movesPgn=[]; userColor = sideSel.value; mode = modeSel.value;
+  whiteKingMoved = blackKingMoved = false;
+  whiteRookA_moved = whiteRookH_moved = blackRookA_moved = blackRookH_moved = false;
+  enPassantTarget = null; render(); renderMoves(); updateStatus();
   if(mode==='peer') showPeerControls(true); else showPeerControls(false);
-  // if user chose Black vs bot, bot (white) plays first
-  if(mode==='bot' && userColor==='b' && turn==='w') { window.setTimeout(()=>{ aiMove(); }, 220); }
+  // bot plays if user chose black
+  if(mode==='bot' && userColor==='b' && turn==='w') { window.setTimeout(()=>{ aiMove(); }, 240); }
 }
 
+// -------------------------- Rendering --------------------------
 function render(){
   boardEl.innerHTML='';
   for(let r=0;r<8;r++){
@@ -206,126 +231,405 @@ function render(){
     }
   }
   applyHighlights();
+  // visually mark en-passant target
+  if(enPassantTarget){
+    const idx = enPassantTarget.r*8 + enPassantTarget.c;
+    const el = boardEl.children[idx];
+    if(el) el.classList.add('hint');
+  }
 }
 
 function onCellClick(e){
   const r=+e.currentTarget.dataset.r, c=+e.currentTarget.dataset.c;
   const piece = board[r][c];
-  // allowed interactions depend on mode
+
+  // control whose clicks allowed
   if(mode==='bot'){
-    if(turn !== userColor) return; // ignore clicks when it's not player's turn
+    if(turn !== userColor) { illegalAttempt(`Not your turn`); return; }
   } else if(mode==='peer'){
-    // in peer mode, only allow moving if it's your turn and connected (or if hotseat for peer?)
     if(!isConnectedPeer) { alert('Peer connection not established. Use signaling to connect.'); return; }
-    if(turn !== userColor) return; // must be your side
-  } else { /* hotseat */ }
+    if(turn !== userColor) { illegalAttempt(`Not your turn`); return; }
+  } else { /* hotseat: both players allowed */ }
 
   if(selected){
     const moves = legalMovesFor(selected.r,selected.c);
-    if(moves.some(m=>m.r===r && m.c===c)){
+    if(moves.some(m=>m.r===r && m.c===c && m.metaAllowed!==false)){
+      // legal — perform move (may involve promotion, castling, en-passant)
       const moveNot = notation(selected.r,selected.c,r,c);
       pushHistory(moveNot);
-      const captured = !!board[r][c];
-      makeMove(selected.r,selected.c,r,c, moveNot);
+      const capture = makeMove(selected.r,selected.c,r,c, moveNot);
       selected=null; highlights=[]; render(); renderMoves();
-      if(soundEnabled){ ensureAudioResume(); captured? AudioEngine.capture() : AudioEngine.move(); }
+      if(soundEnabled){ ensureAudioResume(); capture? AudioEngine.capture() : AudioEngine.move(); }
       if(checkGameOver()) return;
-      if(mode==='bot') window.setTimeout(()=>{ if(turn!==userColor) aiMove(); }, 150);
+      if(mode==='bot') window.setTimeout(()=>{ if(turn!==userColor) aiMove(); }, 160);
       if(mode==='peer') sendPeerMove(moveNot);
+      return;
+    } else {
+      // attempted an illegal move — give feedback and optionally send to peer
+      illegalAttempt(`Illegal move: ${coordToSquare(selected.r,selected.c)} → ${coordToSquare(r,c)}`);
+      // keep selection so player can choose again
       return;
     }
   }
-  // select if friendly piece
+
+  // select a friendly piece
   if(piece && piece[0]===turn) { selected={r,c}; highlights = legalMovesFor(r,c); render(); applySelection(); }
 }
 
-function makeMove(r1,c1,r2,c2, moveNot=null){
-  const moving = board[r1][c1];
-  if(!moving) return;
-  if(moving && moving[1]==='P' && (r2===0 || r2===7)){
-    board[r2][c2] = moving[0] + 'Q';
-  } else { board[r2][c2] = board[r1][c1]; }
-  board[r1][c1]=null;
-  if(moveNot){ if(movesPgn.length===0 || (movesPgn[movesPgn.length-1].b)) movesPgn.push({w:null,b:null}); const last = movesPgn[movesPgn.length-1]; if(turn==='w') last.w = moveNot; else last.b = moveNot; }
-  turn = (turn==='w')?'b':'w'; updateStatus(); }
-
-function pushHistory(moveNot=null){ history.push(JSON.stringify({board:cloneBoard(board),turn:turn,move:moveNot})); if(history.length>800) history.shift(); }
-function undo(){ if(history.length===0) return; const last=JSON.parse(history.pop()); board=last.board; turn=last.turn; selected=null; highlights=[]; if(last.move){ if(movesPgn.length){ const lastP = movesPgn[movesPgn.length-1]; if(lastP.b) lastP.b=null; else movesPgn.pop(); } } render(); renderMoves(); updateStatus(); }
-
-function updateStatus(){ let msg = ''; if(isInCheck('w')) msg += 'White is in check. '; if(isInCheck('b')) msg += 'Black is in check. '; statusEl.textContent = (turn==='w'? 'White':'Black') + " to move. " + msg; if(soundEnabled && (isInCheck('w')||isInCheck('b'))) { ensureAudioResume(); AudioEngine.check(); } }
+// show illegal move message and forward to peer if connected
+function illegalAttempt(msg){
+  statusEl.textContent = msg;
+  if(isConnectedPeer && dc && dc.readyState==='open') {
+    dc.send(JSON.stringify({type:'illegal', text:msg, from:userColor}));
+  }
+  // clear any hints
+  clearHints();
+  // small flash effect on status
+  setTimeout(()=>{ updateStatus(); }, 1400);
+}
 
 function applySelection(){ if(!selected) return; const index = selected.r*8+selected.c; const cell = boardEl.children[index]; if(cell) cell.classList.add('highlight'); applyHighlights(); }
 function applyHighlights(){ for(const el of boardEl.children) el.classList.remove('move','hint'); for(const h of highlights){ if(!h) continue; const index = h.r*8+h.c; const el = boardEl.children[index]; if(el) el.classList.add('move'); } }
 
-// --- Move generation (same as original, with minor refactor) ---
+// -------------------------- Basic helpers --------------------------
 function inBounds(r,c){return r>=0 && r<8 && c>=0 && c<8}
 function isEnemyAt(r,c,color){ return inBounds(r,c) && board[r][c] && board[r][c][0]!==color }
 function isEmpty(r,c){ return inBounds(r,c) && board[r][c]===null }
 
-function generateMoves(r,c,piece){ const color = piece[0]; const type = piece[1]; const moves=[];
-  if(type==='P'){ const dir = (color==='w')? -1:1; if(isEmpty(r+dir,c)) moves.push({r:r+dir,c}); const startRow = (color==='w')?6:1; if(r===startRow && isEmpty(r+dir,c) && isEmpty(r+2*dir,c)) moves.push({r:r+2*dir,c}); for(const dc of [-1,1]) if(isEnemyAt(r+dir,c+dc,color)) moves.push({r:r+dir,c:c+dc}); }
-  else if(type==='N'){ const del=[[ -2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]; for(const d of del){ const rr=r+d[0], cc=c+d[1]; if(inBounds(rr,cc) && (!board[rr][cc] || board[rr][cc][0]!==color)) moves.push({r:rr,c:cc}); } }
-  else if(type==='B' || type==='R' || type==='Q'){ const dirs = (type==='B')? [[1,1],[1,-1],[-1,1],[-1,-1]] : (type==='R')? [[1,0],[-1,0],[0,1],[0,-1]] : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]; for(const d of dirs){ let rr=r+d[0], cc=c+d[1]; while(inBounds(rr,cc)){ if(board[rr][cc]){ if(board[rr][cc][0]!==color) moves.push({r:rr,c:cc}); break } moves.push({r:rr,c:cc}); rr+=d[0]; cc+=d[1]; } } }
-  else if(type==='K'){ for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){ if(dr===0 && dc===0) continue; const rr=r+dr, cc=c+dc; if(inBounds(rr,cc) && (!board[rr][cc] || board[rr][cc][0]!==color)) moves.push({r:rr,c:cc}); } }
-  return moves; }
+// -------------------------- Move generation with castling & en-passant --------------------------
+function generateMoves(r,c,piece){
+  const color = piece[0]; const type = piece[1]; const moves=[];
+  if(type==='P'){
+    const dir = (color==='w')? -1:1;
+    // forward 1
+    if(isEmpty(r+dir,c)) moves.push({r:r+dir,c, metaAllowed:true});
+    // forward 2
+    const startRow = (color==='w')?6:1;
+    if(r===startRow && isEmpty(r+dir,c) && isEmpty(r+2*dir,c)) moves.push({r:r+2*dir,c, metaAllowed:true});
+    // captures
+    for(const dc of [-1,1]){
+      const rr=r+dir, cc=c+dc;
+      if(isEnemyAt(rr,cc,color)) moves.push({r:rr,c:cc, metaAllowed:true});
+      // en-passant capture
+      if(enPassantTarget && rr===enPassantTarget.r && cc===enPassantTarget.c){
+        // ensure the captured pawn exists behind target
+        const capturedPawnR = r; const capturedPawnC = cc;
+        if(inBounds(capturedPawnR,capturedPawnC) && board[capturedPawnR][capturedPawnC] && board[capturedPawnR][capturedPawnC][1]==='P') {
+          moves.push({r:rr,c:cc, enPassant:true, metaAllowed:true});
+        }
+      }
+    }
+  }
+  else if(type==='N'){
+    const del=[[ -2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+    for(const d of del){ const rr=r+d[0], cc=c+d[1]; if(inBounds(rr,cc) && (!board[rr][cc] || board[rr][cc][0]!==color)) moves.push({r:rr,c:cc, metaAllowed:true}); }
+  }
+  else if(type==='B' || type==='R' || type==='Q'){
+    const dirs = (type==='B')? [[1,1],[1,-1],[-1,1],[-1,-1]] : (type==='R')? [[1,0],[-1,0],[0,1],[0,-1]] : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+    for(const d of dirs){ let rr=r+d[0], cc=c+d[1]; while(inBounds(rr,cc)){ if(board[rr][cc]){ if(board[rr][cc][0]!==color) moves.push({r:rr,c:cc, metaAllowed:true}); break } moves.push({r:rr,c:cc, metaAllowed:true}); rr+=d[0]; cc+=d[1]; } }
+  }
+  else if(type==='K'){
+    for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){ if(dr===0 && dc===0) continue; const rr=r+dr, cc=c+dc; if(inBounds(rr,cc) && (!board[rr][cc] || board[rr][cc][0]!==color)) moves.push({r:rr,c:cc, metaAllowed:true}); }
+    // Castling
+    if(color==='w' && !whiteKingMoved && r===7 && c===4){
+      // kingside (h1): squares f1(7,5), g1(7,6) must be empty and not attacked
+      if(!whiteRookH_moved && isEmpty(7,5) && isEmpty(7,6)){
+        if(!isSquareAttacked(board,7,4,'b') && !isSquareAttacked(board,7,5,'b') && !isSquareAttacked(board,7,6,'b')){
+          moves.push({r:7,c:6,castle:'O-O', metaAllowed:true});
+        }
+      }
+      // queenside (a1): squares b1(7,1) c1(7,2) d1(7,3) must be empty (note: b1 may have knight) and c1/d1 must not be attacked
+      if(!whiteRookA_moved && isEmpty(7,1) && isEmpty(7,2) && isEmpty(7,3)){
+        if(!isSquareAttacked(board,7,4,'b') && !isSquareAttacked(board,7,3,'b') && !isSquareAttacked(board,7,2,'b')){
+          moves.push({r:7,c:2,castle:'O-O-O', metaAllowed:true});
+        }
+      }
+    }
+    if(color==='b' && !blackKingMoved && r===0 && c===4){
+      if(!blackRookH_moved && isEmpty(0,5) && isEmpty(0,6)){
+        if(!isSquareAttacked(board,0,4,'w') && !isSquareAttacked(board,0,5,'w') && !isSquareAttacked(board,0,6,'w')){
+          moves.push({r:0,c:6,castle:'O-O', metaAllowed:true});
+        }
+      }
+      if(!blackRookA_moved && isEmpty(0,1) && isEmpty(0,2) && isEmpty(0,3)){
+        if(!isSquareAttacked(board,0,4,'w') && !isSquareAttacked(board,0,3,'w') && !isSquareAttacked(board,0,2,'w')){
+          moves.push({r:0,c:2,castle:'O-O-O', metaAllowed:true});
+        }
+      }
+    }
+  }
+  return moves;
+}
 
-function legalMovesFor(r,c){ const p = board[r][c]; if(!p) return []; const color=p[0]; let moves = generateMoves(r,c,p);
+// legal moves include removal if king left in check
+function legalMovesFor(r,c){
+  const p = board[r][c]; if(!p) return []; const color=p[0];
+  let moves = generateMoves(r,c,p);
   const legal = [];
-  for(const m of moves){ const snapshot = cloneBoard(board); snapshot[m.r][m.c] = snapshot[r][c]; snapshot[r][c] = null; if(p[1]==='P' && (m.r===0 || m.r===7)) snapshot[m.r][m.c] = color+'Q'; if(!kingInCheckAfter(snapshot,color)) legal.push(m); }
-  return legal; }
+  for(const m of moves){
+    const snapshot = cloneBoard(board);
+    // handle en-passant experientially to test king safety
+    if(m.enPassant){
+      const capturedPawnR = r; const capturedPawnC = m.c;
+      snapshot[m.r][m.c] = snapshot[r][c]; snapshot[r][c]=null; snapshot[capturedPawnR][capturedPawnC]=null;
+    } else {
+      snapshot[m.r][m.c] = snapshot[r][c]; snapshot[r][c] = null;
+    }
+    // promotion assumed as queen for safety testing
+    if(p[1]==='P' && (m.r===0 || m.r===7)) snapshot[m.r][m.c] = color+'Q';
+    if(!kingInCheckAfter(snapshot,color)) legal.push(m);
+  }
+  return legal;
+}
 
+// -------------------------- Attack detection / check --------------------------
 function kingInCheckAfter(snap,color){ let kr=-1,kc=-1; for(let i=0;i<8;i++) for(let j=0;j<8;j++) if(snap[i][j]===color+'K'){ kr=i;kc=j } if(kr===-1) return true; return isSquareAttacked(snap,kr,kc, color==='w'?'b':'w'); }
 
 function isInCheck(color){ const k = findKing(color); if(k[0]===-1) return false; return isSquareAttacked(board, k[0], k[1], color==='w'?'b':'w'); }
 function findKing(color){ for(let i=0;i<8;i++) for(let j=0;j<8;j++) if(board[i][j]===color+'K') return [i,j]; return [-1,-1]; }
 
-function isSquareAttacked(snap, r, c, byColor){ if(!inBounds(r,c)) return false; const dir = (byColor==='w')? -1 : 1; const pawnAtt = [[r+dir,c-1],[r+dir,c+1]]; for(const [pr,pc] of pawnAtt) if(inBounds(pr,pc) && snap[pr][pc]===byColor+'P') return true; const knights = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]; for(const d of knights){ const rr=r+d[0], cc=c+d[1]; if(inBounds(rr,cc) && snap[rr][cc]===byColor+'N') return true; }
+function isSquareAttacked(snap, r, c, byColor){
+  if(!inBounds(r,c)) return false;
+  const dir = (byColor==='w')? -1 : 1;
+  // pawns
+  const pawnAtt = [[r+dir,c-1],[r+dir,c+1]];
+  for(const [pr,pc] of pawnAtt) if(inBounds(pr,pc) && snap[pr][pc]===byColor+'P') return true;
+  // knights
+  const knights = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+  for(const d of knights){ const rr=r+d[0], cc=c+d[1]; if(inBounds(rr,cc) && snap[rr][cc]===byColor+'N') return true; }
+  // rooks/queens lines
   const lines = [ [1,0],[-1,0],[0,1],[0,-1] ];
   for(const d of lines){ let rr=r+d[0], cc=c+d[1]; while(inBounds(rr,cc)){ const p=snap[rr][cc]; if(p){ if(p[0]===byColor && (p[1]==='R' || p[1]==='Q')) return true; else break } rr+=d[0];cc+=d[1]; } }
+  // bishops/queens diag
   const diags = [[1,1],[1,-1],[-1,1],[-1,-1]];
   for(const d of diags){ let rr=r+d[0], cc=c+d[1]; while(inBounds(rr,cc)){ const p=snap[rr][cc]; if(p){ if(p[0]===byColor && (p[1]==='B' || p[1]==='Q')) return true; else break } rr+=d[0];cc+=d[1]; } }
+  // king
   for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){ if(dr===0 && dc===0) continue; const rr=r+dr, cc=c+dc; if(inBounds(rr,cc) && snap[rr][cc]===byColor+'K') return true; }
-  return false; }
+  return false;
+}
 
-// --- AI: minimax with material evaluation (same as before) ---
-const pieceValue = {'P':100,'N':320,'B':330,'R':500,'Q':900,'K':20000};
-function evaluatePosition(b){ let score=0; for(let r=0;r<8;r++) for(let c=0;c<8;c++){ const p=b[r][c]; if(p){ const v = pieceValue[p[1]] || 0; score += (p[0]==='w')? v : -v; } } return score; }
+// -------------------------- Move execution (handles castling, en-passant, promotion) --------------------------
+function makeMove(r1,c1,r2,c2, moveNot=null){
+  const moving = board[r1][c1];
+  if(!moving) return false;
+  const color = moving[0];
+  const type = moving[1];
+  let captured = !!board[r2][c2];
+  // detect en-passant capture
+  if(type==='P' && enPassantTarget && r2===enPassantTarget.r && c2===enPassantTarget.c && c1!==c2 && board[r2][c2]===null){
+    // capture the pawn behind target
+    const capR = r1; const capC = c2;
+    if(inBounds(capR,capC) && board[capR][capC] && board[capR][capC][1]==='P'){
+      board[capR][capC] = null;
+      captured = true;
+    }
+  }
 
-function allLegalMovesForColor(color, currentBoard=board){ const moves=[]; for(let r=0;r<8;r++) for(let c=0;c<8;c++) if(currentBoard[r][c] && currentBoard[r][c][0]===color){ const mvs = legalMovesForSnapshot(currentBoard, r, c); for(const m of mvs) moves.push({from:{r,c},to:{r:m.r,c:m.c}}); } return moves; }
+  // castling move: detect by moving king two squares
+  if(type==='K' && Math.abs(c2-c1)===2){
+    if(color==='w'){
+      whiteKingMoved = true;
+      // kingside
+      if(c2===6){
+        // move rook h1 to f1
+        board[7][5] = board[7][7]; board[7][7]=null; whiteRookH_moved=true;
+      } else if(c2===2){
+        board[7][3] = board[7][0]; board[7][0]=null; whiteRookA_moved=true;
+      }
+    } else {
+      blackKingMoved = true;
+      if(c2===6){
+        board[0][5] = board[0][7]; board[0][7]=null; blackRookH_moved=true;
+      } else if(c2===2){
+        board[0][3] = board[0][0]; board[0][0]=null; blackRookA_moved=true;
+      }
+    }
+  }
 
-function aiMove(){ const d = parseInt(depthSel.value,10); const aiColor = (userColor==='w') ? 'b' : 'w'; const best = minimaxRoot(d, aiColor); if(best) { pushHistory(notation(best.from.r,best.from.c,best.to.r,best.to.c)); const captured = !!board[best.to.r][best.to.c]; makeMove(best.from.r,best.from.c,best.to.r,best.to.c, notation(best.from.r,best.from.c,best.to.r,best.to.c)); render(); renderMoves(); if(soundEnabled){ ensureAudioResume(); captured? AudioEngine.capture() : AudioEngine.move(); } if(checkGameOver()) return; } }
+  // if rook moved, update flags
+  if(type==='R'){
+    if(color==='w' && r1===7 && c1===0) whiteRookA_moved=true;
+    if(color==='w' && r1===7 && c1===7) whiteRookH_moved=true;
+    if(color==='b' && r1===0 && c1===0) blackRookA_moved=true;
+    if(color==='b' && r1===0 && c1===7) blackRookH_moved=true;
+  }
 
-function minimaxRoot(depth, aiColor){ const moves = allLegalMovesForColor(aiColor); if(moves.length===0) return null; let bestScore = -Infinity, bestMoves=[]; for(const m of moves){ const snap = cloneBoard(board); snap[m.to.r][m.to.c] = snap[m.from.r][m.from.c]; snap[m.from.r][m.from.c]=null; const score = minimax(snap, depth-1, -Infinity, +Infinity, true); if(score>bestScore){ bestScore=score; bestMoves=[m]; } else if(score===bestScore) bestMoves.push(m); } return bestMoves[Math.floor(Math.random()*bestMoves.length)]; }
+  // move the piece
+  // promotion: if pawn reaches last rank, prompt for piece
+  if(type==='P' && (r2===0 || r2===7)){
+    // temporarily move pawn and prompt promotion selection
+    board[r2][c2] = board[r1][c1];
+    board[r1][c1] = null;
+    // set enPassantTarget to null
+    enPassantTarget = null;
+    // prompt user for promotion piece, but if AI moved, auto-queen
+    if((mode==='bot' && turn!==userColor) || (mode!=='bot' && (turn!==userColor))) {
+      // AI or remote: promote to queen automatically
+      board[r2][c2] = color + 'Q';
+      // update pgn
+      recordMoveInPgn(moveNot);
+      // flip turn
+      turn = (turn==='w')?'b':'w'; updateStatus();
+      return captured;
+    } else {
+      // human: show modal
+      return new Promise((resolve)=>{
+        promotionCallback = (pieceLetter)=>{
+          board[r2][c2] = color + pieceLetter;
+          recordMoveInPgn(moveNot);
+          turn = (turn==='w')?'b':'w'; updateStatus();
+          promotionCallback = null;
+          promoModal.style.display = 'none';
+          resolve(captured);
+        };
+        promoModal.style.display='block';
+      });
+    }
+  } else {
+    board[r2][c2] = board[r1][c1];
+    board[r1][c1] = null;
+  }
 
-function minimax(snap, depth, alpha, beta, isMaximizing){ if(depth===0) return evaluatePosition(snap); const color = isMaximizing? 'w':'b'; const moves = []; for(let r=0;r<8;r++) for(let c=0;c<8;c++) if(snap[r][c] && snap[r][c][0]===color){ const p = snap[r][c]; const gen = generateMovesSnapshot(snap, r, c, p); for(const m of gen) moves.push({from:{r,c},to:{r:m.r,c:m.c}}); } if(moves.length===0) return evaluatePosition(snap); if(isMaximizing){ let maxEval = -Infinity; for(const m of moves){ const s2 = cloneBoard(snap); s2[m.to.r][m.to.c] = s2[m.from.r][m.from.c]; s2[m.from.r][m.from.c]=null; const val = minimax(s2, depth-1, alpha, beta, false); maxEval = Math.max(maxEval, val); alpha = Math.max(alpha, val); if(beta<=alpha) break; } return maxEval; } else { let minEval = +Infinity; for(const m of moves){ const s2 = cloneBoard(snap); s2[m.to.r][m.to.c] = s2[m.from.r][m.from.c]; s2[m.from.r][m.from.c]=null; const val = minimax(s2, depth-1, alpha, beta, true); minEval = Math.min(minEval, val); beta = Math.min(beta, val); if(beta<=alpha) break; } return minEval; } }
+  // if pawn moved two squares set enPassantTarget
+  if(type==='P' && Math.abs(r2-r1)===2){
+    enPassantTarget = { r: (r1 + r2)/2, c: c1 };
+  } else {
+    enPassantTarget = null;
+  }
 
-function generateMovesSnapshot(snap,r,c,piece){ const color = piece[0]; const type = piece[1]; const moves=[]; function inB(rr,cc){return rr>=0&&rr<8&&cc>=0&&cc<8} function empty(rr,cc){return inB(rr,cc) && !snap[rr][cc]} function enemy(rr,cc){return inB(rr,cc) && snap[rr][cc] && snap[rr][cc][0]!==color}
-  if(type==='P'){ const dir=(color==='w')? -1:1; if(empty(r+dir,c)) moves.push({r:r+dir,c}); const start=(color==='w')?6:1; if(r===start && empty(r+dir,c) && empty(r+2*dir,c)) moves.push({r:r+2*dir,c}); for(const dc of [-1,1]) if(enemy(r+dir,c+dc)) moves.push({r:r+dir,c:c+dc}); }
+  // if king moved, update flags
+  if(type==='K'){
+    if(color==='w') whiteKingMoved = true; else blackKingMoved = true;
+  }
+
+  // capture recorded if any
+  recordMoveInPgn(moveNot);
+  // change turn
+  turn = (turn==='w')?'b':'w';
+  updateStatus();
+  return captured;
+}
+
+// To support both synchronous and Promise return (for promotion modal), callers should await if needed.
+// To keep original flows, we'll allow makeMove to return either bool or Promise<bool> — callers handle both.
+
+// store to pgn
+function recordMoveInPgn(moveNot){
+  if(moveNot){
+    if(movesPgn.length===0 || (movesPgn[movesPgn.length-1].b)) movesPgn.push({w:null,b:null});
+    const last = movesPgn[movesPgn.length-1];
+    if(turn==='w') last.w = moveNot; else last.b = moveNot;
+  }
+}
+
+function pushHistory(moveNot=null){
+  history.push(JSON.stringify({
+    board: cloneBoard(board),
+    turn: turn,
+    move: moveNot,
+    whiteKingMoved, blackKingMoved,
+    whiteRookA_moved, whiteRookH_moved, blackRookA_moved, blackRookH_moved,
+    enPassantTarget
+  }));
+  if(history.length>1200) history.shift();
+}
+
+function undo(){
+  if(history.length===0) return;
+  const last = JSON.parse(history.pop());
+  board = last.board;
+  turn = last.turn;
+  whiteKingMoved = last.whiteKingMoved;
+  blackKingMoved = last.blackKingMoved;
+  whiteRookA_moved = last.whiteRookA_moved;
+  whiteRookH_moved = last.whiteRookH_moved;
+  blackRookA_moved = last.blackRookA_moved;
+  blackRookH_moved = last.blackRookH_moved;
+  enPassantTarget = last.enPassantTarget;
+  selected=null; highlights=[];
+  if(last.move){
+    if(movesPgn.length){
+      const lastP = movesPgn[movesPgn.length-1];
+      if(lastP.b) lastP.b=null; else movesPgn.pop();
+    }
+  }
+  render(); renderMoves(); updateStatus();
+}
+
+function updateStatus(){
+  let msg = '';
+  if(isInCheck('w')) msg += 'White is in check. ';
+  if(isInCheck('b')) msg += 'Black is in check. ';
+  statusEl.textContent = (turn==='w'? 'White':'Black') + " to move. " + msg;
+  if(soundEnabled && (isInCheck('w')||isInCheck('b'))) { ensureAudioResume(); AudioEngine.check(); }
+}
+
+// -------------------------- Snapshot move generation for AI (similar to above but on snapshot) --------------------------
+function generateMovesSnapshot(snap, r, c, piece, snapFlags={}){
+  const color = piece[0]; const type = piece[1]; const moves=[];
+  function inB(rr,cc){return rr>=0&&rr<8&&cc>=0&&cc<8}
+  function empty(rr,cc){return inB(rr,cc) && !snap[rr][cc]}
+  function enemy(rr,cc){return inB(rr,cc) && snap[rr][cc] && snap[rr][cc][0]!==color}
+  if(type==='P'){
+    const dir=(color==='w')? -1:1;
+    if(empty(r+dir,c)) moves.push({r:r+dir,c});
+    const start=(color==='w')?6:1;
+    if(r===start && empty(r+dir,c) && empty(r+2*dir,c)) moves.push({r:r+2*dir,c});
+    for(const dc of [-1,1]) {
+      if(enemy(r+dir,c+dc)) moves.push({r:r+dir,c:c+dc});
+      if(snapFlags.enPassant && r+dir===snapFlags.enPassant.r && c+dc===snapFlags.enPassant.c) moves.push({r:r+dir,c:c+dc,enPassant:true});
+    }
+  }
   else if(type==='N'){ const del=[[ -2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]; for(const d of del){ const rr=r+d[0], cc=c+d[1]; if(inB(rr,cc) && (!snap[rr][cc] || snap[rr][cc][0]!==color)) moves.push({r:rr,c:cc}); } }
   else if(type==='B'||type==='R'||type==='Q'){ const dirs = (type==='B')? [[1,1],[1,-1],[-1,1],[-1,-1]] : (type==='R')? [[1,0],[-1,0],[0,1],[0,-1]] : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]; for(const d of dirs){ let rr=r+d[0], cc=c+d[1]; while(inB(rr,cc)){ if(snap[rr][cc]){ if(snap[rr][cc][0]!==color) moves.push({r:rr,c:cc}); break } moves.push({r:rr,c:cc}); rr+=d[0]; cc+=d[1]; } } }
   else if(type==='K'){ for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){ if(dr===0&&dc===0) continue; const rr=r+dr, cc=c+dc; if(inB(rr,cc) && (!snap[rr][cc] || snap[rr][cc][0]!==color)) moves.push({r:rr,c:cc}); } }
-  const legal=[]; for(const m of moves){ const s2 = cloneBoard(snap); s2[m.r][m.c] = s2[r][c]; s2[r][c]=null; if(!kingInCheckAfter(s2,color)) legal.push(m); } return legal; }
+  // NOTE: For AI we skip castling in snapshot generation for speed (AI still strong due to eval)
+  const legal=[]; for(const m of moves){ const s2 = cloneBoard(snap); s2[m.r][m.c] = s2[r][c]; s2[r][c]=null; if(!kingInCheckAfter(s2,color)) legal.push(m); } return legal;
+}
 
-function legalMovesForSnapshot(currentBoard, r, c){ if(!currentBoard || !inBounds(r,c)) return []; const p = currentBoard[r][c]; if(!p) return []; const color = p[0]; const moves = generateMovesSnapshot(currentBoard, r, c, p); const legal = []; for(const m of moves){ const snap = cloneBoard(currentBoard); snap[m.r][m.c] = snap[r][c]; snap[r][c] = null; if(p[1]==='P' && (m.r===0 || m.r===7)) snap[m.r][m.c] = color+'Q'; if(!kingInCheckAfter(snap,color)) legal.push(m); } return legal; }
+function legalMovesForSnapshot(currentBoard, r, c, snapFlags={}){
+  if(!currentBoard || !inBounds(r,c)) return [];
+  const p = currentBoard[r][c]; if(!p) return [];
+  const color = p[0]; const moves = generateMovesSnapshot(currentBoard, r, c, p, snapFlags); const legal = [];
+  for(const m of moves){
+    const snap = cloneBoard(currentBoard);
+    snap[m.r][m.c] = snap[r][c]; snap[r][c] = null;
+    if(!kingInCheckAfter(snap,color)) legal.push(m);
+  }
+  return legal;
+}
 
-// --- Hint generation ---
-let lastHint = null;
-function showHint(){ const hintDepth = Math.min(3, Math.max(1, parseInt(depthSel.value,10)-1)); const color = turn; const moves = allLegalMovesForColor(color); if(moves.length===0){ statusEl.textContent = 'No legal moves for hint.'; return; } let bestScore = (color==='b'?-Infinity:Infinity); let bestMoves = []; for(const m of moves){ const snap = cloneBoard(board); snap[m.to.r][m.to.c] = snap[m.from.r][m.from.c]; snap[m.from.r][m.from.c]=null; const score = minimax(snap, hintDepth-1, -Infinity, +Infinity, color==='w'); if(color==='b'){ if(score>bestScore){ bestScore=score; bestMoves=[m]; } else if(score===bestScore) bestMoves.push(m); } else { if(score<bestScore){ bestScore=score; bestMoves=[m]; } else if(score===bestScore) bestMoves.push(m); } }
-  const chosen = bestMoves[Math.floor(Math.random()*bestMoves.length)]; if(!chosen) return; clearHints(); const fromIdx = chosen.from.r*8+chosen.from.c; const toIdx = chosen.to.r*8+chosen.to.c; const fromEl = boardEl.children[fromIdx]; const toEl = boardEl.children[toIdx]; if(toEl) toEl.classList.add('hint'); if(fromEl) fromEl.classList.add('hint'); lastHint = {from:chosen.from,to:chosen.to}; statusEl.textContent = `Hint: try ${notation(chosen.from.r,chosen.from.c,chosen.to.r,chosen.to.c)}`; }
-function clearHints(){ if(!boardEl) return; for(const el of boardEl.children) el.classList.remove('hint'); lastHint=null; }
+// -------------------------- Game over detection --------------------------
+function checkGameOver(){
+  const moves = allLegalMovesForColor(turn);
+  if(moves.length===0){
+    if(isInCheck(turn)) { alert((turn==='w'?'White':'Black') + ' is checkmated. ' + (turn==='w'?'Black':'White') + ' wins!'); if(soundEnabled){ ensureAudioResume(); AudioEngine.gameover(); } }
+    else { alert('Stalemate — draw.'); }
+    return true;
+  }
+  return false;
+}
 
-// --- Game over detection ---
-function checkGameOver(){ const moves = allLegalMovesForColor(turn); if(moves.length===0){ if(isInCheck(turn)) { alert((turn==='w'?'White':'Black') + ' is checkmated. ' + (turn==='w'?'Black':'White') + ' wins!'); if(soundEnabled){ ensureAudioResume(); AudioEngine.gameover(); } } else { alert('Stalemate — draw.'); } return true; } return false; }
-
-// --- Moves list rendering ---
+// -------------------------- Move list rendering --------------------------
 function renderMoves(){ movesListEl.innerHTML=''; for(let i=0;i<movesPgn.length;i++){ const m = movesPgn[i]; const row = document.createElement('div'); row.className='move-row'; const num = document.createElement('div'); num.className='move-num'; num.textContent = (i+1)+'.'; const mw = document.createElement('div'); mw.className='move-w'; mw.textContent = m.w || ''; const mb = document.createElement('div'); mb.className='move-b'; mb.textContent = m.b || ''; row.appendChild(num); row.appendChild(mw); row.appendChild(mb); movesListEl.appendChild(row); } movesListEl.scrollTop = movesListEl.scrollHeight; }
 
-// ---------- Wire controls ----------
-newBtn.addEventListener('click', ()=>{ initBoard(); clearHints(); }); undoBtn.addEventListener('click', ()=>{ undo(); clearHints(); }); botMoveBtn.addEventListener('click', ()=>{ if(mode!=='bot') { alert('Force bot move only available in Play vs Bot mode.'); return; } if(turn!==userColor) aiMove(); else alert('It is your turn. Bot plays opposite side.'); }); hintBtn.addEventListener('click', ()=>{ showHint(); });
+// -------------------------- Controls wiring --------------------------
+newBtn.addEventListener('click', ()=>{ initBoard(); clearHints(); });
+undoBtn.addEventListener('click', ()=>{ undo(); clearHints(); });
+botMoveBtn.addEventListener('click', ()=>{ if(mode!=='bot') { alert('Force bot move only available in Play vs Bot mode.'); return; } if(turn!==userColor) aiMove(); else alert('It is your turn. Bot plays opposite side.'); });
+hintBtn.addEventListener('click', ()=>{ showHint(); });
 modeSel.addEventListener('change', ()=>{ mode = modeSel.value; showPeerControls(mode==='peer'); initBoard(); });
 soundToggle.addEventListener('change',(e)=>{ soundEnabled = e.target.checked; });
 
-// ---------- Peer-to-peer (manual signaling) ----------
+// promotion buttons
+document.querySelectorAll('.promoBtn').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    const p = b.dataset.piece;
+    if(promotionCallback) promotionCallback(p);
+  });
+});
+
+// -------------------------- Peer-to-peer (manual signaling) --------------------------
 createOfferBtn.addEventListener('click', async ()=>{
   await createPeerConnection(true);
 });
@@ -343,30 +647,254 @@ async function createPeerConnection(initiator=true, remoteOffer=null){
     dc.onmessage = (ev)=>{ handlePeerMessage(ev.data); };
   }
   pc.ondatachannel = (ev)=>{ dc = ev.channel; dc.onmessage = (e)=>{ handlePeerMessage(e.data); }; dc.onopen = ()=>{ isConnectedPeer=true; statusEl.textContent='Data channel open — peer ready'; alert('Data channel open'); }; };
-  pc.onicecandidate = (ev)=>{ if(ev.candidate) return; // wait for full gather (null candidate)
-    if(initiator){ offerOut.value = JSON.stringify(pc.localDescription); } else { answerOut.value = JSON.stringify(pc.localDescription); }
-  };
-  if(initiator){ const offer = await pc.createOffer(); await pc.setLocalDescription(offer); // wait for ICE to finish — we'll rely on onicecandidate above
-  } else {
-    await pc.setRemoteDescription(remoteOffer);
-    const answer = await pc.createAnswer(); await pc.setLocalDescription(answer);
-    // answerOut will be filled once gathering done (onicecandidate)
-  }
+  pc.onicecandidate = (ev)=>{ if(ev.candidate) return; if(initiator){ offerOut.value = JSON.stringify(pc.localDescription); } else { answerOut.value = JSON.stringify(pc.localDescription); } };
+  if(initiator){ const offer = await pc.createOffer(); await pc.setLocalDescription(offer); } else { await pc.setRemoteDescription(remoteOffer); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer); }
 }
 
-function handlePeerMessage(text){ try{ const obj = JSON.parse(text); if(obj.type==='move'){ // opponent moved
-    const mv = obj.move; applyRemoteMove(mv); } else if(obj.type==='chat'){ console.log('peer chat', obj.t); } }catch(e){ console.log('peer msg', text); } }
+function handlePeerMessage(text){
+  try{
+    const obj = JSON.parse(text);
+    if(obj.type==='move'){ applyRemoteMove(obj.move); }
+    else if(obj.type==='illegal'){ // peer notified of illegal attempt
+      const n = document.createElement('div'); n.textContent = `Peer: ${obj.text}`; n.style.color='#ffd2d2'; movesListEl.appendChild(n);
+    } else if(obj.type==='chat'){ console.log('peer chat', obj.t); }
+  }catch(e){ console.log('peer msg', text); }
+}
 
 function sendPeerMove(moveNotation){ if(!dc || dc.readyState!=='open'){ console.warn('Data channel not ready'); return; } dc.send(JSON.stringify({type:'move', move:moveNotation})); }
 
-function applyRemoteMove(moveNotation){ // moveNotation like e2e4. parse and apply
+// -------------------------- Apply remote move --------------------------
+function applyRemoteMove(moveNotation){
   const from = moveNotation.slice(0,2); const to = moveNotation.slice(2,4);
   const fC = files.indexOf(from[0]); const fR = 8 - parseInt(from[1],10); const tC = files.indexOf(to[0]); const tR = 8 - parseInt(to[1],10);
-  pushHistory(moveNotation); const captured = !!board[tR][tC]; makeMove(fR,fC,tR,tC,moveNotation); render(); renderMoves(); if(soundEnabled){ ensureAudioResume(); captured? AudioEngine.capture() : AudioEngine.move(); } if(checkGameOver()) return; }
+  pushHistory(moveNotation);
+  const ret = makeMove(fR,fC,tR,tC,moveNotation);
+  // makeMove may return a Promise (promotion waiting) - handle that
+  if(ret && typeof ret.then==='function'){ ret.then(()=>{
+    render(); renderMoves(); if(soundEnabled){ ensureAudioResume(); AudioEngine.move(); } if(checkGameOver()) return;
+  });
+  } else {
+    render(); renderMoves(); if(soundEnabled){ ensureAudioResume(); AudioEngine.move(); } if(checkGameOver()) return;
+  }
+}
 
+// -------------------------- AI (minimax with eval improvements) --------------------------
+
+// piece values
+const pieceValue = {'P':100,'N':320,'B':330,'R':500,'Q':900,'K':20000};
+
+// Piece-square tables (simple, better positional play)
+const PST = {
+  P: [
+     0,  0,  0,  0,  0,  0,  0,  0,
+    50, 50, 50, 50, 50, 50, 50, 50,
+    10, 10, 20, 30, 30, 20, 10, 10,
+     5,  5, 10, 25, 25, 10,  5,  5,
+     0,  0,  0, 20, 20,  0,  0,  0,
+     5, -5,-10,  0,  0,-10, -5,  5,
+     5, 10, 10,-20,-20, 10, 10,  5,
+     0,  0,  0,  0,  0,  0,  0,  0
+  ],
+  N: [
+   -50,-40,-30,-30,-30,-30,-40,-50,
+   -40,-20,  0,  5,  5,  0,-20,-40,
+   -30,  5, 10, 15, 15, 10,  5,-30,
+   -30,  0, 15, 20, 20, 15,  0,-30,
+   -30,  5, 15, 20, 20, 15,  5,-30,
+   -30,  0, 10, 15, 15, 10,  0,-30,
+   -40,-20,  0,  0,  0,  0,-20,-40,
+   -50,-40,-30,-30,-30,-30,-40,-50
+  ],
+  B: [
+   -20,-10,-10,-10,-10,-10,-10,-20,
+   -10,  5,  0,  0,  0,  0,  5,-10,
+   -10, 10, 10, 10, 10, 10, 10,-10,
+   -10,  0, 10, 10, 10, 10,  0,-10,
+   -10,  5,  5, 10, 10,  5,  5,-10,
+   -10,  0,  5, 10, 10,  5,  0,-10,
+   -10,  0,  0,  0,  0,  0,  0,-10,
+   -20,-10,-10,-10,-10,-10,-10,-20
+  ],
+  R: [
+     0,  0,  5, 10, 10,  5,  0,  0,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+     5, 10, 10, 10, 10, 10, 10,  5,
+     0,  0,  0,  0,  0,  0,  0,  0
+  ],
+  Q: [
+   -20,-10,-10, -5, -5,-10,-10,-20,
+   -10,  0,  0,  0,  0,  0,  0,-10,
+   -10,  0,  5,  5,  5,  5,  0,-10,
+    -5,  0,  5,  5,  5,  5,  0, -5,
+     0,  0,  5,  5,  5,  5,  0, -5,
+   -10,  5,  5,  5,  5,  5,  0,-10,
+   -10,  0,  5,  0,  0,  0,  0,-10,
+   -20,-10,-10, -5, -5,-10,-10,-20
+  ],
+  K: [
+   -30,-40,-40,-50,-50,-40,-40,-30,
+   -30,-40,-40,-50,-50,-40,-40,-30,
+   -30,-40,-40,-50,-50,-40,-40,-30,
+   -30,-40,-40,-50,-50,-40,-40,-30,
+   -20,-30,-30,-40,-40,-30,-30,-20,
+   -10,-20,-20,-20,-20,-20,-20,-10,
+    20, 20,  0,  0,  0,  0, 20, 20,
+    20, 30, 10,  0,  0, 10, 30, 20
+  ]
+};
+
+function evaluatePosition(b){
+  // material + PST + mobility
+  let score=0;
+  for(let r=0;r<8;r++){
+    for(let c=0;c<8;c++){
+      const p=b[r][c];
+      if(p){
+        const v = pieceValue[p[1]] || 0;
+        const sqIndex = (p[0]==='w') ? (r*8 + c) : ((7-r)*8 + c); // flip for black
+        const pstVal = PST[p[1]] ? PST[p[1]][sqIndex] : 0;
+        score += (p[0]==='w')? (v + pstVal) : -(v + pstVal);
+      }
+    }
+  }
+  // mobility (legal move counts)
+  const wMoves = allLegalMovesForColor('w', b).length;
+  const bMoves = allLegalMovesForColor('b', b).length;
+  score += (wMoves - bMoves) * 8;
+  return score;
+}
+
+function allLegalMovesForColor(color, currentBoard=board){
+  const moves=[]; // flattened
+  // For mobility we will use a simpler legal generator (no castling for speed)
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++) if(currentBoard[r][c] && currentBoard[r][c][0]===color){
+    const p = currentBoard[r][c];
+    const mvs = legalMovesForSnapshot(currentBoard, r, c, { enPassant: enPassantTarget });
+    for(const m of mvs) moves.push({from:{r,c},to:{r:m.r,c:m.c}});
+  }
+  return moves;
+}
+
+// Move ordering: prefer captures and promotions
+function scoreMoveOrdering(boardSnap, m){
+  const tgt = boardSnap[m.to.r][m.to.c];
+  let s = 0;
+  if(tgt) s += (pieceValue[tgt[1]] || 0) * 10;
+  const mover = boardSnap[m.from.r][m.from.c];
+  if(mover && mover[1]==='P' && (m.to.r===0 || m.to.r===7)) s += 800; // promotion
+  return s;
+}
+
+// minimax with alpha-beta and move ordering; depth from UI
+function aiMove(){
+  const d = parseInt(depthSel.value,10);
+  const aiColor = (userColor==='w') ? 'b' : 'w';
+  const best = minimaxRoot(d, aiColor);
+  if(best){
+    pushHistory(notation(best.from.r,best.from.c,best.to.r,best.to.c));
+    const maybe = makeMove(best.from.r,best.from.c,best.to.r,best.to.c, notation(best.from.r,best.from.c,best.to.r,best.to.c));
+    if(maybe && typeof maybe.then === 'function'){
+      maybe.then(()=>{ render(); renderMoves(); if(soundEnabled){ ensureAudioResume(); AudioEngine.move(); } if(checkGameOver()) return; });
+    } else {
+      render(); renderMoves(); if(soundEnabled){ ensureAudioResume(); AudioEngine.move(); } if(checkGameOver()) return;
+    }
+  }
+}
+
+function minimaxRoot(depth, aiColor){
+  const moves = allLegalMovesForColor(aiColor);
+  if(moves.length===0) return null;
+  // order moves by capture/promotions
+  moves.sort((a,b)=>scoreMoveOrdering(board,a)-scoreMoveOrdering(board,b));
+  let bestScore = (aiColor==='w')?-Infinity:Infinity; let bestMoves=[];
+  for(const m of moves){
+    const snap = cloneBoard(board);
+    snap[m.to.r][m.to.c] = snap[m.from.r][m.from.c];
+    snap[m.from.r][m.from.c]=null;
+    const score = minimax(snap, depth-1, -Infinity, +Infinity, aiColor!=='w');
+    if(aiColor==='w'){
+      if(score>bestScore){ bestScore=score; bestMoves=[m]; } else if(score===bestScore) bestMoves.push(m);
+    } else {
+      if(score<bestScore){ bestScore=score; bestMoves=[m]; } else if(score===bestScore) bestMoves.push(m);
+    }
+  }
+  return bestMoves[Math.floor(Math.random()*bestMoves.length)];
+}
+
+function minimax(snap, depth, alpha, beta, isMaximizing){
+  if(depth===0) return evaluatePosition(snap);
+  const color = isMaximizing? 'w':'b';
+  let moves=[]; for(let r=0;r<8;r++) for(let c=0;c<8;c++) if(snap[r][c] && snap[r][c][0]===color){
+    const gen = generateMovesSnapshot(snap,r,c,snap[r][c], { enPassant: enPassantTarget });
+    for(const mv of gen) moves.push({from:{r,c},to:{r:mv.r,c:mv.c}});
+  }
+  if(moves.length===0) return evaluatePosition(snap);
+  // ordering: captures / promotions first
+  moves.sort((a,b)=>scoreMoveOrdering(snap,b)-scoreMoveOrdering(snap,a));
+  if(isMaximizing){
+    let maxEval = -Infinity;
+    for(const m of moves){
+      const s2 = cloneBoard(snap);
+      s2[m.to.r][m.to.c] = s2[m.from.r][m.from.c];
+      s2[m.from.r][m.from.c]=null;
+      const val = minimax(s2, depth-1, alpha, beta, false);
+      maxEval = Math.max(maxEval, val);
+      alpha = Math.max(alpha, val);
+      if(beta<=alpha) break;
+    }
+    return maxEval;
+  } else {
+    let minEval = +Infinity;
+    for(const m of moves){
+      const s2 = cloneBoard(snap);
+      s2[m.to.r][m.to.c] = s2[m.from.r][m.from.c];
+      s2[m.from.r][m.from.c]=null;
+      const val = minimax(s2, depth-1, alpha, beta, true);
+      minEval = Math.min(minEval, val);
+      beta = Math.min(beta, val);
+      if(beta<=alpha) break;
+    }
+    return minEval;
+  }
+}
+
+// -------------------------- Hint generation (uses reduced-depth AI) --------------------------
+let lastHint = null;
+function showHint(){
+  const hintDepth = Math.min(3, Math.max(1, parseInt(depthSel.value,10)-1));
+  const color = turn;
+  const moves = allLegalMovesForColor(color);
+  if(moves.length===0){ statusEl.textContent = 'No legal moves for hint.'; return; }
+  moves.sort((a,b)=>scoreMoveOrdering(board,b)-scoreMoveOrdering(board,a));
+  let bestScore = (color==='b'?-Infinity:Infinity); let bestMoves=[];
+  for(const m of moves){
+    const snap = cloneBoard(board);
+    snap[m.to.r][m.to.c] = snap[m.from.r][m.from.c];
+    snap[m.from.r][m.from.c]=null;
+    const score = minimax(snap, hintDepth-1, -Infinity, +Infinity, color==='w');
+    if(color==='b'){
+      if(score>bestScore){ bestScore=score; bestMoves=[m]; } else if(score===bestScore) bestMoves.push(m);
+    } else {
+      if(score<bestScore){ bestScore=score; bestMoves=[m]; } else if(score===bestScore) bestMoves.push(m);
+    }
+  }
+  const chosen = bestMoves[Math.floor(Math.random()*bestMoves.length)];
+  if(!chosen) return;
+  clearHints();
+  const fromIdx = chosen.from.r*8+chosen.from.c; const toIdx = chosen.to.r*8+chosen.to.c;
+  const fromEl = boardEl.children[fromIdx]; const toEl = boardEl.children[toIdx];
+  if(toEl) toEl.classList.add('hint'); if(fromEl) fromEl.classList.add('hint');
+  lastHint = {from:chosen.from,to:chosen.to};
+  statusEl.textContent = `Hint: try ${notation(chosen.from.r,chosen.from.c,chosen.to.r,chosen.to.c)}`;
+}
+function clearHints(){ if(!boardEl) return; for(const el of boardEl.children) el.classList.remove('hint'); lastHint=null; }
+
+// -------------------------- init and start --------------------------
 function showPeerControls(show){ peerControls.style.display = show? 'block' : 'none'; }
-
-// ---------- init and start ----------
 initBoard();
 
 </script>
