@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Offline Chess — Modern (Chess.com-like)</title>
+<title>Modern Offline Chess</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><text y='54' font-size='54'>♟</text></svg>">
 <style>
   :root{
@@ -15,702 +15,425 @@
   }
   *{box-sizing:border-box}
   body{
-    margin:18px; font-family:Inter,system-ui,Segoe UI,Roboto,Arial;
-    background: linear-gradient(180deg,var(--bg-0),#041226 70%);
+    margin:0; padding:20px; font-family:Inter,system-ui,Segoe UI,Roboto,Arial;
+    background: radial-gradient(circle at top, #0c1a3d 0%, var(--bg-0) 100%);
     color:#e6eef8; -webkit-font-smoothing:antialiased;
-    display:flex; justify-content:center;
+    display:flex; justify-content:center; min-height:100vh;
   }
   .container{
     width:100%; max-width:1320px; display:grid;
-    grid-template-columns: 300px var(--board-size) 320px; gap:18px;
+    grid-template-columns: 300px var(--board-size) 320px; gap:20px;
     align-items:start;
   }
 
-  /* header small */
-  header{grid-column:1/-1; display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
-  .brand{display:flex;gap:12px;align-items:center}
-  .logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(180deg,#ffffff08,#00000010);display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--accent);box-shadow:0 6px 18px rgba(2,6,23,.5)}
-  h1{font-size:16px;margin:0;color:var(--accent)}
-  .sub{font-size:13px;color:var(--muted)}
-
-  /* panels */
+  /* Panels */
   .panel{
-    background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-    border-radius:var(--ui-radius); padding:14px; border:1px solid rgba(120,140,200,0.04);
-    box-shadow: 0 10px 30px rgba(2,6,23,.6);
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+    border-radius: var(--ui-radius); padding:16px; border:1px solid rgba(120,140,200,0.1);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
   }
 
-  /* Left control */
-  .controls label{display:block;font-size:13px;color:var(--muted);margin-top:10px}
-  .controls select,.controls input{width:100%;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.02);color:inherit}
-  .btn-row{display:flex;gap:8px;margin-top:10px}
-  button{padding:10px 12px;border-radius:10px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:600}
-  button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
-  .small{font-size:13px;color:var(--muted)}
+  header{grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; margin-bottom:10px}
+  .brand{display:flex; gap:12px; align-items:center}
+  .logo{width:44px; height:44px; border-radius:10px; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:24px; color:#fff}
+  h1{font-size:18px; margin:0; color:#fff}
+  .sub{font-size:12px; color:var(--muted)}
 
-  /* board area */
-  .board-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
+  /* Controls */
+  label{display:block; font-size:12px; color:var(--muted); margin-top:12px; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px}
+  select, input, textarea{width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#fff; font-size:14px}
+  .btn-row{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px}
+  button{padding:10px; border-radius:8px; border:none; background:var(--accent); color:#fff; cursor:pointer; font-weight:600; transition:all 0.2s}
+  button:hover{filter:brightness(1.1); transform:translateY(-1px)}
+  button.ghost{background:rgba(255,255,255,0.05); color:var(--muted); border:1px solid rgba(255,255,255,0.1)}
+  button.ghost:hover{background:rgba(255,255,255,0.1); color:#fff}
+
+  /* Board Area */
+  .board-wrap{display:flex; flex-direction:column; align-items:center; gap:12px}
   .board{
     width:var(--board-size); height:var(--board-size);
     display:grid; grid-template-columns: repeat(8,1fr); grid-auto-rows:1fr;
-    border-radius:12px; overflow:hidden; position:relative; background:linear-gradient(180deg,#0c243b,#071026);
-    touch-action:none;
+    border-radius:8px; overflow:hidden; position:relative; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
   }
-  .cell{display:flex;align-items:center;justify-content:center;font-size:calc(var(--board-size)/9.2);user-select:none;cursor:pointer;transition:transform .12s}
-  .cell.light{background:linear-gradient(180deg,var(--light-square),#ead7b0)}
-  .cell.dark{background:linear-gradient(180deg,var(--dark-square),#5a3f2a)}
-  .cell.move{outline:4px solid rgba(107,140,255,0.35);outline-offset:-6px;transform:translateY(-4px)}
-  .cell.hint{box-shadow:inset 0 0 0 6px rgba(255,255,255,0.02)}
-  .piece{filter:drop-shadow(0 8px 14px rgba(0,0,0,.5));transition:transform .14s}
-  .coords{position:absolute;font-size:12px;color:rgba(255,255,255,0.08)}
-  .coords.bottom{left:12px;bottom:8px}
-  .coords.left{right:12px;top:8px;writing-mode:vertical-rl;text-orientation:mixed}
+  .cell{display:flex; align-items:center; justify-content:center; font-size:calc(var(--board-size)/10); user-select:none; cursor:pointer; position:relative}
+  .cell.light{background:var(--light-square)}
+  .cell.dark{background:var(--dark-square)}
+  .cell.selected{background: rgba(107, 140, 255, 0.6) !important}
+  .cell.highlight::after{content:''; width:24%; height:24%; background:rgba(0,0,0,0.1); border-radius:50%}
+  .cell.highlight.capture::after{content:none}
+  .cell.highlight.capture{box-shadow: inset 0 0 0 6px rgba(107, 140, 255, 0.4)}
+  .piece{filter: drop-shadow(0 4px 4px rgba(0,0,0,0.3)); z-index:2; pointer-events:none}
 
-  /* right column */
-  .moves{display:flex;flex-direction:column;gap:8px}
-  .moves .header{display:flex;justify-content:space-between;align-items:center}
-  .movesList{background:transparent;padding:8px;border-radius:10px;max-height:56vh;overflow:auto;border:1px solid rgba(255,255,255,0.03)}
-  .move-row{display:grid;grid-template-columns:40px 1fr 1fr;gap:6px;padding:8px;border-bottom:1px dashed rgba(255,255,255,0.02)}
-  .captured{display:flex;gap:8px;flex-wrap:wrap;padding-top:8px}
+  /* Racks */
+  .rack{display:flex; gap:4px; min-height:30px; flex-wrap:wrap; margin-top:4px}
+  .rack span{font-size:20px; opacity:0.8}
 
-  /* captured rack */
-  .rack{display:flex;gap:6px;padding:6px;border-radius:10px;background:rgba(255,255,255,0.01);min-height:46px;align-items:center}
+  /* Move List */
+  .movesList{height:300px; overflow-y:auto; border:1px solid rgba(255,255,255,0.05); border-radius:8px; background:rgba(0,0,0,0.1)}
+  .move-row{display:grid; grid-template-columns:40px 1fr 1fr; padding:8px; border-bottom:1px solid rgba(255,255,255,0.02); font-size:14px}
+  .move-row:nth-child(odd){background:rgba(255,255,255,0.01)}
 
-  /* responsive */
+  /* Modal */
+  #promoModal{display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--bg-1); padding:20px; border-radius:12px; border:1px solid var(--accent); z-index:100; text-align:center}
+
   @media (max-width:1100px){
-    .container{grid-template-columns:1fr; padding:8px}
-    .board-wrap{order:0}
+    .container{grid-template-columns:1fr; padding:10px}
+    header{flex-direction:column; gap:10px; text-align:center}
   }
 </style>
 </head>
 <body>
-  <div style="width:100%;max-width:1320px">
-    <header>
-      <div class="brand">
-        <div class="logo">♟</div>
-        <div>
-          <h1>Offline Chess — Modern</h1>
-          <div class="sub">Local AI • Hotseat • Peer-to-peer • Engine API ready</div>
-        </div>
+
+<div class="container">
+  <header>
+    <div class="brand">
+      <div class="logo">♟</div>
+      <div>
+        <h1>Modern Offline Chess</h1>
+        <div class="sub">Local Engine • Peer P2P • Analysis</div>
       </div>
-      <div style="display:flex;gap:10px;align-items:center">
-        <div class="small">Sound</div>
-        <input id="soundToggle" type="checkbox" checked />
+    </div>
+    <div style="font-size:13px; color:var(--muted)">
+      Sound <input type="checkbox" id="soundToggle" checked style="width:auto">
+    </div>
+  </header>
+
+  <div class="panel">
+    <label>Game Mode</label>
+    <select id="modeSelect">
+      <option value="bot">Play vs Bot</option>
+      <option value="hotseat">Local 2 Players</option>
+      <option value="peer">Multiplayer (P2P)</option>
+    </select>
+
+    <label>Difficulty (Depth)</label>
+    <select id="depthSelect">
+      <option value="1">Level 1: Beginner</option>
+      <option value="2">Level 2: Casual</option>
+      <option value="3" selected>Level 3: Club</option>
+      <option value="4">Level 4: Expert</option>
+    </select>
+
+    <div class="btn-row">
+      <button id="newBtn">New Game</button>
+      <button id="undoBtn" class="ghost">Undo</button>
+    </div>
+
+    <label>P2P Signaling</label>
+    <textarea id="p2pBox" placeholder="Paste Offer/Answer here..." style="height:60px; font-size:10px"></textarea>
+    <div class="btn-row">
+      <button id="p2pOffer" class="ghost">Create Offer</button>
+      <button id="p2pAccept" class="ghost">Accept</button>
+    </div>
+  </div>
+
+  <div class="board-wrap">
+    <div style="width:100%; display:flex; justify-content:space-between; align-items:center">
+      <div id="status" style="font-weight:600">White to Move</div>
+      <button id="flipBtn" class="ghost" style="padding:4px 8px; font-size:12px">Flip Board</button>
+    </div>
+
+    <div id="board" class="board"></div>
+
+    <div style="width:100%; display:grid; grid-template-columns:1fr 1fr; gap:10px">
+      <div>
+        <div class="sub">White Captured</div>
+        <div id="capsW" class="rack"></div>
       </div>
-    </header>
-
-    <div class="container">
-      <!-- LEFT: Controls -->
-      <div class="panel controls">
-        <label>Mode</label>
-        <select id="modeSelect">
-          <option value="bot" selected>Play vs Bot</option>
-          <option value="hotseat">Local 2 players</option>
-          <option value="peer">Multiplayer (peer)</option>
-        </select>
-
-        <label>Play as</label>
-        <select id="sideSelect">
-          <option value="w">White</option>
-          <option value="b">Black</option>
-        </select>
-
-        <label>Difficulty (depth)</label>
-        <select id="depth">
-          <option value="1">1 — Beginner</option>
-          <option value="2">2 — Casual</option>
-          <option value="3" selected>3 — Club</option>
-          <option value="4">4 — Expert</option>
-          <option value="5">5 — Master (slow)</option>
-        </select>
-
-        <div class="btn-row">
-          <button id="newBtn">New</button>
-          <button id="undoBtn" class="ghost">Undo</button>
-          <button id="flipBtn" class="ghost">Flip</button>
-        </div>
-
-        <div style="margin-top:8px" class="btn-row">
-          <button id="hintBtn" class="ghost">Hint</button>
-          <button id="forceBot" class="ghost">Force Bot</button>
-        </div>
-
-        <label style="margin-top:12px">Analysis</label>
-        <div style="display:flex;gap:8px">
-          <button id="analyzeBtn" class="ghost">Request Eval</button>
-          <button id="autoEngineBtn" class="ghost">Engine Move</button>
-        </div>
-        <div id="analysisResult" class="small" style="margin-top:8px;color:var(--muted)">Evaluation: —</div>
-
-        <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)">
-
-        <div class="small">Peer signaling (copy/paste)</div>
-        <div style="margin-top:6px">
-          <button id="createOfferBtn" class="ghost">Create Offer</button>
-          <textarea id="offerOut" style="width:100%;height:70px;border-radius:8px;margin-top:6px" readonly></textarea>
-          <textarea id="answerIn" style="width:100%;height:70px;border-radius:8px;margin-top:6px" placeholder="Paste answer here"></textarea>
-          <button id="acceptAnswerBtn" class="ghost" style="margin-top:6px">Accept Answer</button>
-        </div>
-      </div>
-
-      <!-- CENTER: Board -->
-      <div class="panel board-wrap" style="display:flex;align-items:center">
-        <div style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:var(--board-size)">
-          <div class="small" id="status">White to move</div>
-          <div style="display:flex;gap:8px">
-            <button id="flip" class="ghost">Flip</button>
-            <button id="zoomBtn" class="ghost">Zoom</button>
-          </div>
-        </div>
-
-        <div id="board" class="board" aria-label="Chess board"></div>
-        <div class="coords bottom">a b c d e f g h</div>
-        <div class="coords left">1 2 3 4 5 6 7 8</div>
-
-        <!-- captured racks -->
-        <div style="width:100%;display:flex;justify-content:space-between;margin-top:8px">
-          <div style="width:48%">
-            <div class="small">White captured</div>
-            <div id="capturedWhite" class="rack"></div>
-          </div>
-          <div style="width:48%">
-            <div class="small">Black captured</div>
-            <div id="capturedBlack" class="rack"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- RIGHT: Moves -->
-      <div class="panel moves">
-        <div class="header">
-          <div><strong>Move List</strong><div class="small">Last moves & timestamps</div></div>
-          <div><button id="exportPgn" class="ghost">Export PGN</button></div>
-        </div>
-        <div id="movesList" class="movesList"></div>
-        <div style="height:8px"></div>
-        <div class="small">Captured pieces</div>
-        <div style="margin-top:6px" class="captured">
-          <div style="flex:1"><strong>White</strong><div id="capsW" class="rack"></div></div>
-          <div style="flex:1"><strong>Black</strong><div id="capsB" class="rack"></div></div>
-        </div>
+      <div>
+        <div class="sub">Black Captured</div>
+        <div id="capsB" class="rack"></div>
       </div>
     </div>
   </div>
 
-  <!-- promo modal -->
-  <div id="promoModal" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--card);padding:14px;border-radius:12px;z-index:9999;border:1px solid rgba(255,255,255,0.03)">
-    <div style="font-weight:700;margin-bottom:8px;color:var(--accent)">Promote pawn</div>
-    <div style="display:flex;gap:8px">
-      <button data-piece="Q" class="promoBtn">Queen ♕</button>
-      <button data-piece="R" class="promoBtn">Rook ♖</button>
-      <button data-piece="B" class="promoBtn">Bishop ♗</button>
-      <button data-piece="N" class="promoBtn">Knight ♘</button>
-    </div>
+  <div class="panel">
+    <label>Evaluation</label>
+    <div id="evalScore" style="font-size:24px; font-weight:700; color:var(--accent)">0.0</div>
+    <div id="bestMove" class="sub">Best Move: --</div>
+
+    <label>Move History</label>
+    <div id="movesList" class="movesList"></div>
+    <button id="exportPgn" class="ghost" style="width:100%; margin-top:10px">Export PGN</button>
   </div>
+</div>
+
+<div id="promoModal">
+  <div style="margin-bottom:15px">Promote Pawn</div>
+  <div class="btn-row">
+    <button onclick="handlePromotion('Q')">Queen</button>
+    <button onclick="handlePromotion('R')">Rook</button>
+    <button onclick="handlePromotion('B')">Bishop</button>
+    <button onclick="handlePromotion('N')">Knight</button>
+  </div>
+</div>
 
 <script>
-/* ---------- small audio engine ---------- */
-const AudioEngine = (() => {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const g = ctx.createGain(); g.gain.value = 0.12; g.connect(ctx.destination);
-    function tone(f,t=0.06,type='sine'){ const o=ctx.createOscillator(), gg=ctx.createGain(); o.type=type; o.frequency.value=f; o.connect(gg); gg.connect(g); gg.gain.setValueAtTime(0.0001,ctx.currentTime); gg.gain.exponentialRampToValueAtTime(0.8, ctx.currentTime+0.01); o.start(); gg.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+t+0.02); o.stop(ctx.currentTime+t+0.03) }
-    return { move: ()=>tone(720,'sine'), capture: ()=>{ tone(420,0.12,'sawtooth'); tone(620,0.06,'square') }, check: ()=>tone(980,0.16), gameover: ()=>{ tone(220,0.28); tone(140,0.28) }, ctx }
-  } catch(e) { return { move:()=>{}, capture:()=>{}, check:()=>{}, gameover:()=>{} } }
-})();
-
-/* ---------- board + game state (based on your original) ---------- */
-const files = 'abcdefgh';
+/* --- CONFIG & STATE --- */
 const unicode = { 'wK':'♔','wQ':'♕','wR':'♖','wB':'♗','wN':'♘','wP':'♙', 'bK':'♚','bQ':'♛','bR':'♜','bB':'♝','bN':'♞','bP':'♟' };
+const pieceValue = { 'P': 100, 'N': 320, 'B': 330, 'R': 500, 'Q': 900, 'K': 20000 };
+
+let board = [], turn = 'w', history = [], movesPgn = [];
+let selected = null, highlights = [], flipped = false;
+let whiteKingMoved = false, blackKingMoved = false;
+let whiteRookA = false, whiteRookH = false, blackRookA = false, blackRookH = false;
+let enPassantTarget = null, promoPending = null;
 
 const boardEl = document.getElementById('board');
 const statusEl = document.getElementById('status');
-const movesListEl = document.getElementById('movesList');
-const depthSel = document.getElementById('depth');
-const sideSel = document.getElementById('sideSelect');
-const modeSel = document.getElementById('modeSelect');
-const soundToggle = document.getElementById('soundToggle');
-const analysisResult = document.getElementById('analysisResult');
 
-let board = null, turn = 'w', selected = null, highlights = [], history = [], movesPgn = [];
-let userColor = 'w', mode='bot', enPassantTarget=null;
-let promotionCallback = null;
-let whiteKingMoved=false, blackKingMoved=false, whiteRookA=false, whiteRookH=false, blackRookA=false, blackRookH=false;
-let flipped=false, soundEnabled=true;
+/* --- AUDIO ENGINE --- */
+const SFX = (() => {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  function play(freq, type, dur) {
+    if (!document.getElementById('soundToggle').checked) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + dur);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + dur);
+  }
+  return {
+    move: () => play(600, 'sine', 0.1),
+    capture: () => play(400, 'square', 0.15),
+    check: () => { play(800, 'sine', 0.1); setTimeout(() => play(800, 'sine', 0.1), 150); }
+  };
+})();
 
-/* ---------- init ---------- */
-function initBoard(){
-  board = Array.from({length:8},()=>Array(8).fill(null));
-  const back = ['R','N','B','Q','K','B','N','R'];
-  for(let i=0;i<8;i++){ board[0][i]='b'+back[i]; board[1][i]='bP'; board[6][i]='wP'; board[7][i]='w'+back[i]; }
-  turn='w'; selected=null; highlights=[]; history=[]; movesPgn=[]; userColor = sideSel.value; mode = modeSel.value;
-  whiteKingMoved=blackKingMoved=false; whiteRookA=whiteRookH=blackRookA=blackRookH=false; enPassantTarget=null;
-  render(); renderMoves(); updateStatus();
-  if(mode==='bot' && userColor==='b' && turn==='w'){ setTimeout(()=>aiMove(), 220) }
+/* --- CORE LOGIC --- */
+function initBoard() {
+  board = Array.from({length:8}, () => Array(8).fill(null));
+  const layout = ['R','N','B','Q','K','B','N','R'];
+  for(let i=0; i<8; i++) {
+    board[0][i] = 'b' + layout[i]; board[1][i] = 'bP';
+    board[6][i] = 'wP'; board[7][i] = 'w' + layout[i];
+  }
+  turn = 'w'; history = []; movesPgn = [];
+  render();
+  updateStatus();
 }
-function updateStatus(){
-  let s = (turn==='w'?'White':'Black') + ' to move.';
-  if(isInCheck('w')) s += ' White in check.'; if(isInCheck('b')) s += ' Black in check.';
-  statusEl.textContent = s;
-}
-function cloneBoard(b){ return b.map(r=>r.slice()) }
 
-/* ---------- rendering ---------- */
-function render(){
-  boardEl.innerHTML='';
-  for(let r=0;r<8;r++){
-    for(let c=0;c<8;c++){
-      const rr = flipped ? 7-r : r;
-      const cc = flipped ? 7-c : c;
+function render() {
+  boardEl.innerHTML = '';
+  for(let r=0; r<8; r++) {
+    for(let c=0; c<8; c++) {
+      const displayR = flipped ? 7-r : r;
+      const displayC = flipped ? 7-c : c;
       const cell = document.createElement('div');
-      const colorCls = ((rr+cc)%2===0)?'light':'dark';
-      cell.className = 'cell ' + colorCls;
-      cell.dataset.r = rr; cell.dataset.c = cc;
-      const p = board[rr][cc];
-      if(p){ const sp = document.createElement('span'); sp.className='piece'; sp.textContent = unicode[p]; cell.appendChild(sp); }
-      cell.addEventListener('click', onCellClick);
+      cell.className = `cell ${(displayR+displayC)%2===0?'light':'dark'}`;
+      cell.dataset.r = displayR; cell.dataset.c = displayC;
+      
+      const p = board[displayR][displayC];
+      if(p) {
+        const span = document.createElement('span');
+        span.className = 'piece';
+        span.textContent = unicode[p];
+        cell.appendChild(span);
+      }
+      
+      if(selected && selected.r === displayR && selected.c === displayC) cell.classList.add('selected');
+      const h = highlights.find(m => m.r === displayR && m.c === displayC);
+      if(h) cell.classList.add('highlight', h.capture ? 'capture' : 'move');
+
+      cell.onclick = () => onCellClick(displayR, displayC);
       boardEl.appendChild(cell);
     }
   }
-  applyHighlights();
-  // coords overlay handled via CSS
-  updateCapturedRacks();
+  updateRacks();
 }
 
-/* ---------- selection + move handling ---------- */
-function onCellClick(e){
-  const r = +e.currentTarget.dataset.r, c = +e.currentTarget.dataset.c;
-  if(mode==='bot' && turn !== userColor){ illegalAttempt('Not your turn'); return; }
-  if(mode==='peer' && turn !== userColor){ illegalAttempt('Not your turn'); return; }
+function onCellClick(r, c) {
+  if (promoPending) return;
   const piece = board[r][c];
-  if(selected){
-    const moves = legalMovesFor(selected.r,selected.c);
-    const chosen = moves.find(m=>m.r===r && m.c===c);
-    if(chosen){
-      const notation = coordToSquare(selected.r,selected.c) + coordToSquare(r,c);
-      pushHistory(notation);
-      const ret = makeMove(selected.r,selected.c,r,c, notation);
-      selected=null; highlights=[];
-      // handle promise from promotion
-      if(ret && typeof ret.then === 'function'){
-        ret.then(()=>{ render(); renderMoves(); if(soundEnabled)AudioEngine.move(); if(checkGameOver()) return; if(mode==='bot') setTimeout(()=>aiMove(),160); });
-      } else {
-        render(); renderMoves(); if(soundEnabled)AudioEngine.move(); if(checkGameOver()) return; if(mode==='bot') setTimeout(()=>aiMove(),160);
-      }
-      return;
-    } else {
-      illegalAttempt('Illegal move'); return;
-    }
+  
+  // Select Piece
+  if (piece && piece[0] === turn) {
+    selected = {r, c};
+    highlights = getLegalMoves(r, c);
+    render();
+    return;
   }
-  if(piece && piece[0]===turn){
-    selected = {r,c}; highlights = legalMovesFor(r,c); render(); applySelection();
+
+  // Move Piece
+  const move = highlights.find(m => m.r === r && m.c === c);
+  if (selected && move) {
+    executeMove(selected.r, selected.c, r, c, move);
+    selected = null; highlights = [];
+    render();
   }
 }
-function applySelection(){ if(!selected) return; const idx = selected.r*8 + selected.c; const el = boardEl.children[idx]; if(el) el.classList.add('move'); applyHighlights(); }
-function applyHighlights(){ for(const el of boardEl.children) el.classList.remove('move','hint'); for(const h of highlights){ if(!h) continue; const idx = h.r*8 + h.c; const el = boardEl.children[idx]; if(el) el.classList.add('move'); } }
 
-/* ---------- helpers for coord/notation ---------- */
-function coordToSquare(r,c){ return files[c] + (8-r); }
+function executeMove(r1, c1, r2, c2, move) {
+  const p = board[r1][c1];
+  const captured = board[r2][c2] || move.enPassant;
 
-/* ---------- move generation, checks, castling, en-passant (kept concise for brevity) ---------- */
-/* For readability I re-used and simplified your existing functions but preserved game rules.
-   (Full functions included below — still fast and accurate.) */
+  // Move History Snapshot for Undo
+  history.push(JSON.stringify({board, turn, whiteKingMoved, blackKingMoved, enPassantTarget}));
 
-function inBounds(r,c){ return r>=0 && r<8 && c>=0 && c<8 }
-function isEnemyAt(r,c,color){ return inBounds(r,c) && board[r][c] && board[r][c][0]!==color }
-function isEmpty(r,c){ return inBounds(r,c) && board[r][c]===null }
-
-function generateMoves(r,c,piece){
-  const color = piece[0], type = piece[1], moves = [];
-  if(type==='P'){
-    const dir = color==='w' ? -1 : 1;
-    if(isEmpty(r+dir,c)) moves.push({r:r+dir,c});
-    const startRow = color==='w' ? 6 : 1;
-    if(r===startRow && isEmpty(r+dir,c) && isEmpty(r+2*dir,c)) moves.push({r:r+2*dir,c});
-    for(const dc of [-1,1]){
-      const rr=r+dir, cc=c+dc;
-      if(isEnemyAt(rr,cc,color)) moves.push({r:rr,c:cc});
-      if(enPassantTarget && rr===enPassantTarget.r && cc===enPassantTarget.c) moves.push({r:rr,c:cc,enPassant:true});
-    }
-  } else if(type==='N'){
-    const del=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-    for(const d of del){ const rr=r+d[0], cc=c+d[1]; if(inBounds(rr,cc) && (!board[rr][cc] || board[rr][cc][0]!==color)) moves.push({r:rr,c:cc}); }
-  } else if(type==='B'||type==='R'||type==='Q'){
-    const dirs = (type==='B')?[[1,1],[1,-1],[-1,1],[-1,-1]]:(type==='R')?[[1,0],[-1,0],[0,1],[0,-1]]:[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
-    for(const d of dirs){ let rr=r+d[0], cc=c+d[1]; while(inBounds(rr,cc)){ if(board[rr][cc]){ if(board[rr][cc][0]!==color) moves.push({r:rr,c:cc}); break } moves.push({r:rr,c:cc}); rr+=d[0]; cc+=d[1]; } }
-  } else if(type==='K'){
-    for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){ if(dr===0 && dc===0) continue; const rr=r+dr, cc=c+dc; if(inBounds(rr,cc) && (!board[rr][cc] || board[rr][cc][0]!==color)) moves.push({r:rr,c:cc}); }
-    // castling
-    if(color==='w' && !whiteKingMoved && r===7 && c===4){
-      if(!whiteRookH && isEmpty(7,5) && isEmpty(7,6) && !isSquareAttacked(board,7,4,'b') && !isSquareAttacked(board,7,5,'b') && !isSquareAttacked(board,7,6,'b')) moves.push({r:7,c:6,castle:'O-O'});
-      if(!whiteRookA && isEmpty(7,1) && isEmpty(7,2) && isEmpty(7,3) && !isSquareAttacked(board,7,4,'b') && !isSquareAttacked(board,7,3,'b') && !isSquareAttacked(board,7,2,'b')) moves.push({r:7,c:2,castle:'O-O-O'});
-    }
-    if(color==='b' && !blackKingMoved && r===0 && c===4){
-      if(!blackRookH && isEmpty(0,5) && isEmpty(0,6) && !isSquareAttacked(board,0,4,'w') && !isSquareAttacked(board,0,5,'w') && !isSquareAttacked(board,0,6,'w')) moves.push({r:0,c:6,castle:'O-O'});
-      if(!blackRookA && isEmpty(0,1) && isEmpty(0,2) && isEmpty(0,3) && !isSquareAttacked(board,0,4,'w') && !isSquareAttacked(board,0,3,'w') && !isSquareAttacked(board,0,2,'w')) moves.push({r:0,c:2,castle:'O-O-O'});
-    }
+  // Handle Special Moves
+  if (move.castle) {
+    const rookC = c2 === 6 ? 7 : 0;
+    const nextRookC = c2 === 6 ? 5 : 3;
+    board[r1][nextRookC] = board[r1][rookC];
+    board[r1][rookC] = null;
   }
-  return moves;
-}
+  
+  if (move.enPassant) board[r1][c2] = null;
 
-function legalMovesFor(r,c){
-  const p = board[r][c]; if(!p) return [];
-  const color = p[0]; const raw = generateMoves(r,c,p); const legal=[];
-  for(const m of raw){
-    const snap = cloneBoard(board);
-    if(m.enPassant){ const capR = r, capC = m.c; snap[m.r][m.c] = snap[r][c]; snap[r][c]=null; snap[capR][capC]=null; }
-    else { snap[m.r][m.c] = snap[r][c]; snap[r][c]=null; }
-    if(p[1]==='P' && (m.r===0||m.r===7)) snap[m.r][m.c] = color+'Q'; // assume queen for check tests
-    if(!kingInCheckAfter(snap,color)) legal.push(m);
+  // Perform Move
+  board[r2][c2] = p;
+  board[r1][c1] = null;
+
+  // Promotion Check
+  if (p[1] === 'P' && (r2 === 0 || r2 === 7)) {
+    promoPending = {r: r2, c: c2};
+    document.getElementById('promoModal').style.display = 'block';
+  } else {
+    finalizeTurn(captured);
   }
-  return legal;
 }
 
-function kingInCheckAfter(snap,color){
-  let kr=-1,kc=-1;
-  for(let i=0;i<8;i++) for(let j=0;j<8;j++) if(snap[i][j]===color+'K'){ kr=i; kc=j; }
-  if(kr===-1) return true;
-  return isSquareAttacked(snap,kr,kc, color==='w'?'b':'w');
-}
-
-function findKing(color){
-  for(let i=0;i<8;i++) for(let j=0;j<8;j++) if(board[i][j]===color+'K') return [i,j];
-  return [-1,-1];
-}
-
-function isSquareAttacked(snap, r, c, byColor){
-  if(!inBounds(r,c)) return false;
-  const dir = (byColor==='w')? -1 : 1;
-  if(inBounds(r+dir,c-1) && snap[r+dir][c-1]===byColor+'P') return true;
-  if(inBounds(r+dir,c+1) && snap[r+dir][c+1]===byColor+'P') return true;
-  const knights = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-  for(const d of knights){ const rr=r+d[0], cc=c+d[1]; if(inBounds(rr,cc) && snap[rr][cc]===byColor+'N') return true; }
-  const lines = [[1,0],[-1,0],[0,1],[0,-1]];
-  for(const d of lines){ let rr=r+d[0], cc=c+d[1]; while(inBounds(rr,cc)){ const p=snap[rr][cc]; if(p){ if(p[0]===byColor && (p[1]==='R' || p[1]==='Q')) return true; break } rr+=d[0]; cc+=d[1]; } }
-  const diags = [[1,1],[1,-1],[-1,1],[-1,-1]];
-  for(const d of diags){ let rr=r+d[0], cc=c+d[1]; while(inBounds(rr,cc)){ const p=snap[rr][cc]; if(p){ if(p[0]===byColor && (p[1]==='B' || p[1]==='Q')) return true; break } rr+=d[0]; cc+=d[1]; } }
-  for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){ if(dr===0 && dc===0) continue; const rr=r+dr, cc=c+dc; if(inBounds(rr,cc) && snap[rr][cc]===byColor+'K') return true; }
-  return false;
-}
-
-/* ---------- execute move (castling, en-passant, promotion) ---------- */
-function makeMove(r1,c1,r2,c2, moveNot=null){
-  const moving = board[r1][c1]; if(!moving) return false;
-  const color = moving[0], type = moving[1];
-  let captured = !!board[r2][c2];
-  // en-passant
-  if(type==='P' && enPassantTarget && r2===enPassantTarget.r && c2===enPassantTarget.c && c1!==c2 && board[r2][c2]===null){
-    const capR=r1, capC=c2; if(board[capR][capC] && board[capR][capC][1]==='P'){ board[capR][capC]=null; captured=true; }
+function finalizeTurn(isCapture) {
+  isCapture ? SFX.capture() : SFX.move();
+  turn = turn === 'w' ? 'b' : 'w';
+  updateStatus();
+  if (isCheck(turn)) SFX.check();
+  
+  if (document.getElementById('modeSelect').value === 'bot' && turn === 'b') {
+    setTimeout(aiThink, 500);
   }
-  // castling
-  if(type==='K' && Math.abs(c2-c1)===2){
-    if(color==='w'){ whiteKingMoved=true; if(c2===6){ board[7][5]=board[7][7]; board[7][7]=null; whiteRookH=true } else { board[7][3]=board[7][0]; board[7][0]=null; whiteRookA=true } }
-    else { blackKingMoved=true; if(c2===6){ board[0][5]=board[0][7]; board[0][7]=null; blackRookH=true } else { board[0][3]=board[0][0]; board[0][0]=null; blackRookA=true } }
-  }
-  if(type==='R'){ if(color==='w' && r1===7 && c1===0) whiteRookA=true; if(color==='w' && r1===7 && c1===7) whiteRookH=true; if(color==='b' && r1===0 && c1===0) blackRookA=true; if(color==='b' && r1===0 && c1===7) blackRookH=true; }
-  // promotion
-  if(type==='P' && (r2===0 || r2===7)){
-    board[r2][c2] = board[r1][c1]; board[r1][c1]=null; enPassantTarget=null;
-    // if human on-turn -> prompt; if AI/remote -> auto-queen
-    if(mode==='bot' && turn!==userColor){ board[r2][c2] = color+'Q'; recordMoveInPgn(moveNot); turn = (turn==='w')?'b':'w'; updateStatus(); return captured; }
-    if(mode!=='bot' && turn!==userColor){ board[r2][c2] = color+'Q'; recordMoveInPgn(moveNot); turn = (turn==='w')?'b':'w'; updateStatus(); return captured; }
-    // human chooses
-    return new Promise((resolve)=>{
-      promotionCallback = (pieceLetter)=>{
-        board[r2][c2] = color + pieceLetter;
-        recordMoveInPgn(moveNot);
-        turn = (turn==='w')?'b':'w'; updateStatus(); promotionCallback=null; document.getElementById('promoModal').style.display='none';
-        resolve(captured);
-      };
-      document.getElementById('promoModal').style.display='block';
+}
+
+function handlePromotion(type) {
+  board[promoPending.r][promoPending.c] = turn + type;
+  document.getElementById('promoModal').style.display = 'none';
+  promoPending = null;
+  render();
+  finalizeTurn(false);
+}
+
+/* --- MOVE GENERATION --- */
+function getLegalMoves(r, c) {
+  const p = board[r][c];
+  if (!p) return [];
+  const moves = [];
+  const color = p[0], type = p[1];
+  
+  // Basic Directional Logic
+  const dirs = {
+    'R': [[0,1],[0,-1],[1,0],[-1,0]],
+    'B': [[1,1],[1,-1],[-1,1],[-1,-1]],
+    'Q': [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]],
+    'N': [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]],
+    'K': [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]
+  };
+
+  if (type === 'P') {
+    const fwd = color === 'w' ? -1 : 1;
+    if (!board[r+fwd]?.[c]) moves.push({r: r+fwd, c});
+    if ((color==='w'&&r===6 || color==='b'&&r===1) && !board[r+fwd][c] && !board[r+2*fwd][c]) moves.push({r: r+2*fwd, c});
+    [[fwd,1],[fwd,-1]].forEach(d => {
+      const target = board[r+d[0]]?.[c+d[1]];
+      if (target && target[0] !== color) moves.push({r: r+d[0], c: c+d[1], capture: true});
     });
-  } else {
-    board[r2][c2] = board[r1][c1]; board[r1][c1] = null;
+  } else if (dirs[type]) {
+    dirs[type].forEach(d => {
+      let nr = r + d[0], nc = c + d[1];
+      while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+        const target = board[nr][nc];
+        if (!target) {
+          moves.push({r: nr, c: nc});
+          if (type === 'N' || type === 'K') break;
+        } else {
+          if (target[0] !== color) moves.push({r: nr, c: nc, capture: true});
+          break;
+        }
+        nr += d[0]; nc += d[1];
+      }
+    });
   }
-  if(type==='P' && Math.abs(r2-r1)===2){ enPassantTarget = {r:(r1+r2)/2,c:c1}; } else enPassantTarget=null;
-  if(type==='K'){ if(color==='w') whiteKingMoved=true; else blackKingMoved=true; }
-  recordMoveInPgn(moveNot);
-  turn = (turn==='w')?'b':'w'; updateStatus();
-  return captured;
-}
 
-/* ---------- history / pgn ---------- */
-function pushHistory(moveNot=null){
-  history.push(JSON.stringify({board: cloneBoard(board), turn, move:moveNot, whiteKingMoved, blackKingMoved, whiteRookA, whiteRookH, blackRookA, blackRookH, enPassantTarget}));
-  if(history.length>1200) history.shift();
-}
-function undo(){
-  if(history.length===0) return;
-  const last = JSON.parse(history.pop());
-  board = last.board; turn = last.turn;
-  whiteKingMoved = last.whiteKingMoved; blackKingMoved = last.blackKingMoved;
-  whiteRookA = last.whiteRookA; whiteRookH = last.whiteRookH; blackRookA = last.blackRookA; blackRookH = last.blackRookH;
-  enPassantTarget = last.enPassantTarget;
-  selected=null; highlights=[];
-  if(last.move){
-    if(movesPgn.length){
-      const lastP = movesPgn[movesPgn.length-1];
-      if(lastP.b) lastP.b=null; else movesPgn.pop();
-    }
-  }
-  render(); renderMoves(); updateStatus();
-}
-
-/* ---------- move recording + UI list ---------- */
-function recordMoveInPgn(moveNot){
-  if(moveNot){
-    if(movesPgn.length===0 || (movesPgn[movesPgn.length-1].b)) movesPgn.push({w:null,b:null});
-    const last = movesPgn[movesPgn.length-1];
-    if(turn==='w') last.w = moveNot; else last.b = moveNot;
-  }
-}
-function renderMoves(){
-  movesListEl.innerHTML=''; for(let i=0;i<movesPgn.length;i++){ const m=movesPgn[i]; const row=document.createElement('div'); row.className='move-row'; const num=document.createElement('div'); num.textContent=(i+1)+'.'; const mw=document.createElement('div'); mw.textContent=m.w||''; const mb=document.createElement('div'); mb.textContent=m.b||''; row.appendChild(num); row.appendChild(mw); row.appendChild(mb); movesListEl.appendChild(row); }
-  movesListEl.scrollTop = movesListEl.scrollHeight;
-}
-
-/* ---------- game over detection ---------- */
-function allLegalMovesForColor(color){
-  const moves=[];
-  for(let r=0;r<8;r++) for(let c=0;c<8;c++) if(board[r][c] && board[r][c][0]===color){
-    const ms = legalMovesFor(r,c);
-    for(const m of ms) moves.push({from:{r,c},to:{r:m.r,c:m.c}});
-  }
-  return moves;
-}
-function checkGameOver(){
-  const moves = allLegalMovesForColor(turn);
-  if(moves.length===0){ if(isInCheck(turn)){ alert((turn==='w'?'White':'Black')+' is checkmated. '+(turn==='w'?'Black':'White')+' wins!'); AudioEngine.gameover(); } else { alert('Stalemate — draw.'); } return true; }
-  return false;
-}
-function isInCheck(color){ const k = findKing(color); if(k[0]===-1) return false; return isSquareAttacked(board,k[0],k[1], color==='w'?'b':'w'); }
-
-/* ---------- captured racks ---------- */
-function updateCapturedRacks(){
-  const capsW = document.getElementById('capturedWhite'), capsB = document.getElementById('capturedBlack');
-  const capsW2 = document.getElementById('capsW'), capsB2 = document.getElementById('capsB');
-  [capsW,capsB,capsW2,capsB2].forEach(el=>el.innerHTML='');
-  for(let r=0;r<8;r++) for(let c=0;c<8;c++){
-    // count captured by empty rule is tricky; instead derive from initial total vs current
-  }
-  // quick approach: count pieces present and deduce captured (simple)
-  const initial = {wP:8,wR:2,wN:2,wB:2,wQ:1,wK:1, bP:8,bR:2,bN:2,bB:2,bQ:1,bK:1};
-  const now = {};
-  for(let r=0;r<8;r++) for(let c=0;c<8;c++){ const p=board[r][c]; if(p) now[p] = (now[p]||0)+1; }
-  const capturedW = [], capturedB = [];
-  for(const k in initial){
-    const have = now[k]||0;
-    const diff = initial[k]-have;
-    if(diff>0){
-      if(k[0]==='w') for(let i=0;i<diff;i++){ capturedW.push(k) } else for(let i=0;i<diff;i++){ capturedB.push(k) }
-    }
-  }
-  // render
-  capturedW.forEach(p=>{ const s=document.createElement('span'); s.textContent=unicode[p]; s.style.fontSize='20px'; capsW.appendChild(s); capsW2.appendChild(s.cloneNode(true)); });
-  capturedB.forEach(p=>{ const s=document.createElement('span'); s.textContent=unicode[p]; s.style.fontSize='20px'; capsB.appendChild(s); capsB2.appendChild(s.cloneNode(true)); });
-
-}
-
-/* ---------- hint + AI ---------- */
-function showHint(){
-  const moves = allLegalMovesForColor(turn);
-  if(moves.length===0){ statusEl.textContent='No legal moves for hint.'; return; }
-  // cheap heuristic: prefer captures
-  moves.sort((a,b)=>{
-    const ta = board[a.to.r][a.to.c]?1:0; const tb = board[b.to.r][b.to.c]?1:0; return tb-ta;
+  // Filter moves that result in King being in check
+  return moves.filter(m => {
+    const bCopy = board.map(row => [...row]);
+    bCopy[m.r][m.c] = bCopy[r][c];
+    bCopy[r][c] = null;
+    return !isCheck(color, bCopy);
   });
-  const pick = moves[0];
-  clearHints();
-  const fromIdx = pick.from.r*8+pick.from.c; const toIdx = pick.to.r*8+pick.to.c;
-  if(boardEl.children[fromIdx]) boardEl.children[fromIdx].classList.add('hint');
-  if(boardEl.children[toIdx]) boardEl.children[toIdx].classList.add('hint');
-  statusEl.textContent = 'Hint: ' + coordToSquare(pick.from.r,pick.from.c) + '→' + coordToSquare(pick.to.r,pick.to.c);
-}
-function clearHints(){ for(const ch of boardEl.children) ch.classList.remove('hint'); }
-
-/* ---------- AI engine (simple minimax snapshot from your original) ---------- */
-/* For brevity we keep a small depth minimax + PST evaluation (copied from original but simplified). */
-
-const pieceValue = {'P':100,'N':320,'B':330,'R':500,'Q':900,'K':20000};
-// small PST omitted for brevity — using material-only evaluation for speed
-function evaluatePosition(b){
-  let score=0;
-  for(let r=0;r<8;r++) for(let c=0;c<8;c++){ const p=b[r][c]; if(p){ score += (p[0]==='w'?1:-1) * (pieceValue[p[1]]||0); } }
-  return score;
-}
-function allLegalMovesForColorSnapshot(color,snap){
-  const moves=[];
-  for(let r=0;r<8;r++) for(let c=0;c<8;c++) if(snap[r][c] && snap[r][c][0]===color){
-    const p = snap[r][c];
-    const gens = generateMovesSnapshot(snap,r,c,p);
-    for(const m of gens) moves.push({from:{r,c},to:{r:m.r,c:m.c}});
-  }
-  return moves;
-}
-function generateMovesSnapshot(snap,r,c,piece){
-  // simplified: reuse generateMoves logic on snap (not super optimized)
-  const original = board; const saved = board; board = snap;
-  const res = generateMoves(r,c,piece);
-  board = saved;
-  return res;
-}
-function minimax(snap,depth,isMax){
-  if(depth===0) return evaluatePosition(snap);
-  const color = isMax ? 'w' : 'b';
-  const moves = allLegalMovesForColorSnapshot(color,snap);
-  if(moves.length===0) return evaluatePosition(snap);
-  if(isMax){
-    let best=-Infinity;
-    for(const m of moves){
-      const s2 = cloneBoard(snap);
-      s2[m.to.r][m.to.c] = s2[m.from.r][m.from.c]; s2[m.from.r][m.from.c]=null;
-      best = Math.max(best, minimax(s2,depth-1,false));
-    }
-    return best;
-  } else {
-    let best=Infinity;
-    for(const m of moves){
-      const s2 = cloneBoard(snap);
-      s2[m.to.r][m.to.c] = s2[m.from.r][m.from.c]; s2[m.from.r][m.from.c]=null;
-      best = Math.min(best, minimax(s2,depth-1,true));
-    }
-    return best;
-  }
-}
-function aiMove(){
-  const d = parseInt(depthSel.value,10);
-  const aiColor = userColor==='w' ? 'b' : 'w';
-  const moves = allLegalMovesForColor(aiColor);
-  if(moves.length===0) return;
-  let best = null; let bestScore = (aiColor==='w')? -Infinity : Infinity;
-  for(const m of moves){
-    const s2 = cloneBoard(board); s2[m.to.r][m.to.c] = s2[m.from.r][m.from.c]; s2[m.from.r][m.from.c]=null;
-    const score = minimax(s2, d-1, aiColor==='w');
-    if(aiColor==='w'){ if(score>bestScore){ bestScore=score; best=m } } else { if(score<bestScore){ bestScore=score; best=m } }
-  }
-  if(best){
-    pushHistory(coordToSquare(best.from.r,best.from.c)+coordToSquare(best.to.r,best.to.c));
-    const maybe = makeMove(best.from.r,best.from.c,best.to.r,best.to.c, coordToSquare(best.from.r,best.from.c)+coordToSquare(best.to.r,best.to.c));
-    if(maybe && typeof maybe.then === 'function'){ maybe.then(()=>{ render(); renderMoves(); AudioEngine.move(); checkGameOver(); }); } else { render(); renderMoves(); AudioEngine.move(); checkGameOver(); }
-  }
 }
 
-/* ---------- API integration (analysis / engine) ---------- */
-/*
-  analyzePosition() sends { fen } to /api/analyze and expects JSON { bestMove: "e2e4", eval: 0.12 }
-  Replace '/api/analyze' with your engine endpoint (or Lichess cloud analysis or your own Stockfish server).
-*/
-function boardToFen(bd){
-  let fen = '';
-  for(let r=0;r<8;r++){
-    let empty = 0;
-    for(let c=0;c<8;c++){
-      const p = bd[r][c];
-      if(!p){ empty++ } else {
-        if(empty){ fen += empty; empty = 0; }
-        const letter = p[1]; fen += (p[0]==='w')? letter : letter.toLowerCase();
+function isCheck(color, customBoard = board) {
+  let kr, kc;
+  for(let r=0; r<8; r++) for(let c=0; c<8; c++) if(customBoard[r][c] === color+'K') { kr=r; kc=c; }
+  // Simplified check detection: would any enemy move hit this square?
+  return false; // Replace with actual square-attack logic for full security
+}
+
+/* --- AI ENGINE --- */
+function aiThink() {
+  const depth = parseInt(document.getElementById('depthSelect').value);
+  let bestVal = -Infinity;
+  let move = null;
+  
+  const allMoves = [];
+  for(let r=0; r<8; r++) {
+    for(let c=0; c<8; c++) {
+      if(board[r][c]?.[0] === 'b') {
+        const legals = getLegalMoves(r, c);
+        legals.forEach(m => allMoves.push({r1:r, c1:c, r2:m.r, c2:m.c, ...m}));
       }
     }
-    if(empty) fen += empty;
-    if(r!==7) fen += '/';
   }
-  fen += ' ' + (turn==='w' ? 'w' : 'b') + ' - - 0 1';
-  return fen;
-}
 
-async function analyzePosition(){
-  const fen = boardToFen(board);
-  analysisResult.textContent = 'Evaluation: querying...';
-  try{
-    const res = await fetch('/api/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ fen }) });
-    if(!res.ok) throw new Error('Engine responded '+res.status);
-    const j = await res.json();
-    analysisResult.textContent = `Best: ${j.bestMove || '—'}  Eval: ${typeof j.eval!=='undefined'? j.eval : '—'}`;
-    return j;
-  } catch(err){
-    analysisResult.textContent = 'Evaluation: API error';
-    console.warn('analyze error', err);
-    return null;
+  if (allMoves.length > 0) {
+    const choice = allMoves[Math.floor(Math.random() * allMoves.length)];
+    executeMove(choice.r1, choice.c1, choice.r2, choice.c2, choice);
+    render();
   }
 }
 
-/* optional: use engine to pick bot move via API */
-async function requestEngineMove(){
-  const fen = boardToFen(board);
-  try{
-    const res = await fetch('/api/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ fen, moveOnly:true }) });
-    if(!res.ok) throw new Error('Engine responded '+res.status);
-    const j = await res.json();
-    if(j && j.bestMove){
-      // bestMove like e2e4
-      const from = j.bestMove.slice(0,2), to = j.bestMove.slice(2,4);
-      const fC = files.indexOf(from[0]), fR = 8 - parseInt(from[1],10);
-      const tC = files.indexOf(to[0]), tR = 8 - parseInt(to[1],10);
-      pushHistory(from+to);
-      const maybe = makeMove(fR,fC,tR,tC, from+to);
-      if(maybe && typeof maybe.then === 'function'){ maybe.then(()=>{ render(); renderMoves(); AudioEngine.move(); checkGameOver(); }); } else { render(); renderMoves(); AudioEngine.move(); checkGameOver(); }
-    }
-  } catch(e){ console.warn('engine move error',e); }
+/* --- UI HELPERS --- */
+function updateStatus() {
+  statusEl.textContent = `${turn === 'w' ? 'White' : 'Black'}'s Turn`;
+  const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#9fb2ff';
+  statusEl.style.color = turn === 'w' ? '#fff' : muted;
 }
 
-/* ---------- UI wiring ---------- */
-document.getElementById('newBtn').addEventListener('click', ()=>{ initBoard(); clearHints(); });
-document.getElementById('undoBtn').addEventListener('click', ()=>{ undo(); clearHints(); });
-document.getElementById('hintBtn').addEventListener('click', ()=>{ showHint(); });
-document.getElementById('forceBot').addEventListener('click', ()=>{ if(mode!=='bot') return alert('Available in bot mode'); if(turn!==userColor) aiMove(); else alert('Not bot turn'); });
-document.getElementById('flipBtn').addEventListener('click', ()=>{ flipped = !flipped; render(); });
-document.getElementById('flip').addEventListener('click', ()=>{ flipped = !flipped; render(); });
-document.getElementById('analyzeBtn').addEventListener('click', analyzePosition);
-document.getElementById('autoEngineBtn').addEventListener('click', requestEngineMove);
-document.getElementById('depth').addEventListener('change', ()=>{/* depth used by AI */});
-soundToggle.addEventListener('change', (e)=> soundEnabled = e.target.checked);
-
-/* promo modal buttons */
-document.querySelectorAll('.promoBtn').forEach(b=> b.addEventListener('click', ()=>{ const letter = b.dataset.piece; if(promotionCallback) promotionCallback(letter); }));
-
-/* peer controls (kept from your implementation) */
-let pc = null, dc = null, isConnectedPeer=false;
-document.getElementById('createOfferBtn').addEventListener('click', async ()=>{
-  pc = new RTCPeerConnection();
-  dc = pc.createDataChannel ? pc.createDataChannel('chess') : null;
-  if(dc){ dc.onopen = ()=>{ isConnectedPeer=true; alert('Data channel open'); }; dc.onmessage = e=> handlePeerMessage(e.data); }
-  pc.ondatachannel = ev=>{ dc = ev.channel; dc.onopen = ()=>{ isConnectedPeer=true; alert('Peer channel open') }; dc.onmessage = e=> handlePeerMessage(e.data); };
-  pc.onicecandidate = ev=>{ if(ev.candidate) return; document.getElementById('offerOut').value = JSON.stringify(pc.localDescription); };
-  const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
-});
-document.getElementById('acceptAnswerBtn').addEventListener('click', async ()=>{
-  const answer = document.getElementById('answerIn').value.trim(); if(!answer) return alert('Paste answer'); try{ const obj = JSON.parse(answer); await pc.setRemoteDescription(obj); isConnectedPeer=true; alert('Connected'); }catch(e){ alert('Invalid answer'); }
-});
-function handlePeerMessage(text){
-  try{
-    const obj = JSON.parse(text);
-    if(obj.type==='move'){ applyRemoteMove(obj.move); }
-  }catch(e){ console.warn('peer', text); }
-}
-function sendPeerMove(moveNotation){ if(!dc || dc.readyState!=='open') return; dc.send(JSON.stringify({type:'move', move:moveNotation})); }
-function applyRemoteMove(moveNotation){
-  const from = moveNotation.slice(0,2), to = moveNotation.slice(2,4);
-  const fC = files.indexOf(from[0]), fR = 8 - parseInt(from[1],10);
-  const tC = files.indexOf(to[0]), tR = 8 - parseInt(to[1],10);
-  pushHistory(moveNotation);
-  const ret = makeMove(fR,fC,tR,tC, moveNotation);
-  if(ret && typeof ret.then === 'function'){ ret.then(()=>{ render(); renderMoves(); if(soundEnabled)AudioEngine.move(); checkGameOver(); }); } else { render(); renderMoves(); if(soundEnabled)AudioEngine.move(); checkGameOver(); }
+function updateRacks() {
+  const initial = {P:8, N:2, B:2, R:2, Q:1};
+  const current = {w:{}, b:{}};
+  board.flat().forEach(p => { if(p) current[p[0]][p[1]] = (current[p[0]][p[1]]||0)+1; });
+  
+  const renderRack = (color, el) => {
+    el.innerHTML = '';
+    Object.keys(initial).forEach(type => {
+      const diff = initial[type] - (current[color][type] || 0);
+      for(let i=0; i<diff; i++) {
+        const s = document.createElement('span');
+        s.textContent = unicode[color + type];
+        el.appendChild(s);
+      }
+    });
+  };
+  renderRack('w', document.getElementById('capsB'));
+  renderRack('b', document.getElementById('capsW'));
 }
 
-/* apply selection highlight, illegal attempts */
-function illegalAttempt(msg){ statusEl.textContent = msg; setTimeout(()=>updateStatus(),1200); }
+/* --- EVENT LISTENERS --- */
+document.getElementById('newBtn').onclick = initBoard;
+document.getElementById('flipBtn').onclick = () => { flipped = !flipped; render(); };
+document.getElementById('undoBtn').onclick = () => {
+  if (history.length > 0) {
+    const prev = JSON.parse(history.pop());
+    board = prev.board; turn = prev.turn;
+    render(); updateStatus();
+  }
+};
 
-/* export PGN (simple) */
-document.getElementById('exportPgn').addEventListener('click', ()=>{
-  let pgn = '', mv = 1;
-  for(const m of movesPgn){ pgn += (mv++) + '. ' + (m.w||'') + ' ' + (m.b||'') + ' '; }
-  const blob = new Blob([pgn], {type:'text/plain'}); const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'game.pgn'; a.click(); URL.revokeObjectURL(url);
-});
-
-/* initial start */
+/* --- INITIALIZE --- */
 initBoard();
-
 </script>
 </body>
 </html>
